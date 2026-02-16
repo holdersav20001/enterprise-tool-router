@@ -1,0 +1,8 @@
+{"id":"nl_sql_001","input":"Show me Q4 revenue by region","expected_tool":"sql","test_type":"planner","expect_success":true}
+{"id":"nl_sql_002","input":"What is the total revenue for North America?","expected_tool":"sql","test_type":"planner","expect_success":true}
+{"id":"nl_sql_003","input":"List all job runs that succeeded","expected_tool":"sql","test_type":"planner","expect_success":true}
+{"id":"nl_sql_004","input":"Show me sales data for Europe in Q2","expected_tool":"sql","test_type":"planner","expect_success":true}
+{"id":"nl_sql_005","input":"Count how many job runs failed","expected_tool":"sql","test_type":"planner","expect_success":true}
+{"id":"nl_low_conf_001","input":"Show me stuff","expected_tool":"sql","test_type":"planner","expect_low_confidence":true}
+{"id":"nl_low_conf_002","input":"Get data","expected_tool":"sql","test_type":"planner","expect_low_confidence":true}
+{"id":"nl_low_conf_003","input":"What?","expected_tool":"sql","test_type":"planner","expect_low_confidence":true}
