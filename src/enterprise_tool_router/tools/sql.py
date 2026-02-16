@@ -32,6 +32,10 @@ BLOCKED_KEYWORDS = {
 # Default LIMIT if not specified
 DEFAULT_LIMIT = 200
 
+# Default confidence threshold (Week 3 Commit 19)
+# Queries with confidence below this threshold won't execute automatically
+DEFAULT_CONFIDENCE_THRESHOLD = 0.7
+
 
 class SafetyError(Exception):
     """Raised when a query fails safety checks."""
@@ -41,15 +45,22 @@ class SafetyError(Exception):
 class SqlTool:
     name = "sql"
 
-    def __init__(self, llm_provider: Optional[LLMProvider] = None):
+    def __init__(
+        self,
+        llm_provider: Optional[LLMProvider] = None,
+        confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD
+    ):
         """Initialize SQL tool.
 
         Args:
             llm_provider: Optional LLM provider for natural language queries.
                          If None, only raw SQL queries are supported.
+            confidence_threshold: Minimum confidence score (0.0-1.0) required
+                                 to execute LLM-generated SQL. Default: 0.7
         """
         self._llm_provider = llm_provider
         self._planner = SqlPlanner(llm_provider) if llm_provider else None
+        self._confidence_threshold = confidence_threshold
 
     def run(self, query: str) -> ToolResult:
         """Execute a safe SQL query against Postgres.
@@ -87,6 +98,21 @@ class SqlTool:
                 if isinstance(plan, SqlPlanErrorSchema):
                     error_schema = SqlErrorSchema(error=f"SQL generation failed: {plan.error}")
                     return ToolResult(data=error_schema.model_dump(), notes="planner_error")
+
+                # Week 3 Commit 19: Check confidence threshold
+                # If confidence is too low, don't execute - ask for clarification instead
+                if plan.confidence < self._confidence_threshold:
+                    clarification = SqlErrorSchema(
+                        error=(
+                            f"Query unclear (confidence: {plan.confidence:.2f} < {self._confidence_threshold:.2f}). "
+                            f"Please rephrase or provide more specific details. "
+                            f"Suggested SQL: {plan.sql}. Explanation: {plan.explanation}"
+                        )
+                    )
+                    return ToolResult(
+                        data=clarification.model_dump(),
+                        notes="low_confidence"
+                    )
 
                 # Planner succeeded - now validate the generated SQL
                 # This is CRITICAL: LLM output goes through same safety checks

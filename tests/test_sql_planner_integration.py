@@ -160,12 +160,16 @@ def test_planner_error_handled():
     assert result.notes == "planner_error"
 
 
-def test_planner_low_confidence_still_validated():
-    """Test that even low-confidence planner output goes through validator."""
+def test_planner_low_confidence_blocked():
+    """Test that low-confidence queries don't execute (Commit 19).
+
+    As of Commit 19, low-confidence queries are blocked to prevent
+    speculative execution of uncertain queries.
+    """
     provider = MockProvider(
         response_data={
             "sql": "SELECT * FROM sales_fact LIMIT 50",
-            "confidence": 0.3,  # Low confidence
+            "confidence": 0.3,  # Low confidence (< 0.7 threshold)
             "explanation": "Uncertain query"
         }
     )
@@ -173,9 +177,10 @@ def test_planner_low_confidence_still_validated():
 
     result = tool.run("Show me stuff")
 
-    # Low confidence SQL still gets validated and executed if safe
-    # (Confidence thresholding happens in Commit 19)
-    assert "error" not in result.data or result.data.get("row_count") is not None
+    # Commit 19: Low confidence queries are now blocked
+    assert result.notes == "low_confidence"
+    assert "error" in result.data
+    assert "confidence" in result.data["error"].lower()
 
 
 def test_planner_table_allowlist_enforced():
