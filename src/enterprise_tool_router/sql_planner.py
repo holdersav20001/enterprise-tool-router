@@ -1,0 +1,176 @@
+"""SQL Planner - Natural Language to SQL using LLM.
+
+This module uses an LLM to generate SQL queries from natural language.
+The LLM proposes SQL, but the deterministic validator (from Week 2) approves it.
+
+Week 3 Commit 17: SQL Planner
+
+Architecture:
+    Natural Language Query
+         ↓
+    LLM Provider (generate_structured)
+         ↓
+    SqlPlanSchema (Pydantic validation)
+         ↓
+    Return (sql, confidence, explanation)
+
+Safety:
+- LLM output is validated against strict Pydantic schema
+- LIMIT clause is required in all generated SQL
+- Output is immutable (frozen=True)
+- No raw LLM output is returned
+"""
+from typing import Optional
+from pydantic import ValidationError
+
+from .llm.base import LLMProvider, StructuredOutputError
+from .schemas_sql_planner import SqlPlanSchema, SqlPlanErrorSchema
+
+
+# Database schema description for the LLM
+# This tells the LLM what tables and columns are available
+DB_SCHEMA_DESCRIPTION = """
+Available Tables:
+
+1. sales_fact
+   - id: integer (primary key)
+   - region: varchar(50) - Geographic region (e.g., "North America", "Europe")
+   - quarter: varchar(10) - Quarter identifier (e.g., "Q1", "Q2", "Q3", "Q4")
+   - revenue: decimal(12,2) - Revenue amount in USD
+   - units_sold: integer - Number of units sold
+   - created_at: timestamp - Record creation timestamp
+
+2. job_runs
+   - id: integer (primary key)
+   - job_name: varchar(100) - Name of the ETL job
+   - status: varchar(20) - Job status: 'success', 'failure', or 'running'
+   - started_at: timestamp - Job start time
+   - completed_at: timestamp - Job completion time (null if running)
+   - records_processed: integer - Number of records processed
+
+3. audit_log (read-only)
+   - id: integer (primary key)
+   - ts: timestamp - Timestamp of the operation
+   - correlation_id: varchar(64) - Correlation ID for tracking
+   - user_id: varchar(128) - User who performed the operation
+   - tool: varchar(32) - Tool used (e.g., "sql", "vector", "rest")
+   - action: varchar(64) - Action performed
+   - input_hash: varchar(64) - SHA256 hash of input
+   - output_hash: varchar(64) - SHA256 hash of output
+   - success: boolean - Whether operation succeeded
+   - duration_ms: integer - Duration in milliseconds
+
+Allowed Tables: sales_fact, job_runs, audit_log
+"""
+
+
+class SqlPlanner:
+    """Generate SQL queries from natural language using an LLM.
+
+    The planner uses a structured output LLM to generate SQL that:
+    - Matches the database schema
+    - Includes a LIMIT clause for safety
+    - Has a confidence score
+    - Includes an explanation
+
+    Example:
+        >>> from enterprise_tool_router.llm.providers import MockProvider
+        >>> provider = MockProvider(response_data={
+        ...     "sql": "SELECT * FROM sales_fact LIMIT 10",
+        ...     "confidence": 0.9,
+        ...     "explanation": "Select all sales records"
+        ... })
+        >>> planner = SqlPlanner(provider)
+        >>> result = planner.plan("Show me recent sales")
+        >>> assert isinstance(result, SqlPlanSchema)
+        >>> assert "LIMIT" in result.sql
+    """
+
+    def __init__(self, llm_provider: LLMProvider):
+        """Initialize SQL planner with an LLM provider.
+
+        Args:
+            llm_provider: LLM provider to use for SQL generation
+        """
+        self._llm = llm_provider
+
+    def plan(self, natural_language_query: str) -> SqlPlanSchema | SqlPlanErrorSchema:
+        """Generate SQL from a natural language query.
+
+        Args:
+            natural_language_query: User's query in natural language
+
+        Returns:
+            SqlPlanSchema with generated SQL, confidence, and explanation
+            OR SqlPlanErrorSchema if generation fails
+
+        Example:
+            >>> result = planner.plan("Show revenue by region")
+            >>> if isinstance(result, SqlPlanSchema):
+            ...     print(f"SQL: {result.sql}")
+            ...     print(f"Confidence: {result.confidence}")
+        """
+        try:
+            # Build the prompt
+            prompt = self._build_prompt(natural_language_query)
+
+            # Generate structured output from LLM
+            plan, usage = self._llm.generate_structured(prompt, SqlPlanSchema)
+
+            # plan is already validated by the LLM provider
+            # and by SqlPlanSchema's field validators
+            return plan
+
+        except (StructuredOutputError, ValidationError) as e:
+            # LLM output didn't match schema or validation failed
+            return SqlPlanErrorSchema(
+                error=f"Failed to generate valid SQL: {str(e)}",
+                confidence=0.0
+            )
+        except Exception as e:
+            # Other errors (API failures, etc.)
+            return SqlPlanErrorSchema(
+                error=f"SQL generation error: {str(e)}",
+                confidence=0.0
+            )
+
+    def _build_prompt(self, query: str) -> str:
+        """Build the prompt for the LLM.
+
+        Args:
+            query: Natural language query from the user
+
+        Returns:
+            Formatted prompt string with instructions and schema
+        """
+        prompt = f"""You are a SQL query generator for a PostgreSQL database.
+
+DATABASE SCHEMA:
+{DB_SCHEMA_DESCRIPTION}
+
+SAFETY RULES (CRITICAL):
+1. You MUST include a LIMIT clause in every query (default: LIMIT 200)
+2. Only use SELECT statements (no INSERT, UPDATE, DELETE, DROP, etc.)
+3. Only query the allowed tables listed above
+4. Use proper SQL syntax for PostgreSQL
+
+USER QUERY:
+{query}
+
+TASK:
+Generate a safe SQL query that answers the user's question.
+
+REQUIREMENTS:
+- Return valid PostgreSQL SELECT query
+- Include LIMIT clause (required for safety)
+- Provide confidence score (0.0-1.0) based on query clarity
+- Explain what the SQL does in plain English
+
+If the query is unclear or cannot be safely translated to SQL, use a low confidence score (<0.7) and explain why in the explanation field.
+"""
+        return prompt
+
+    @property
+    def model_name(self) -> str:
+        """Return the name of the underlying LLM model."""
+        return self._llm.model_name
