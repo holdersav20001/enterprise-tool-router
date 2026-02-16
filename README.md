@@ -565,6 +565,7 @@ enterprise-tool-router/
 │   ├── llm/
 │   │   ├── base.py            # LLM provider interface
 │   │   ├── providers/
+│   │   │   ├── kilocode.py    # Kilocode integration (default)
 │   │   │   ├── anthropic.py   # Claude integration
 │   │   │   ├── openai.py      # GPT integration
 │   │   │   └── mock.py        # Testing provider
@@ -684,26 +685,34 @@ DB_USER=etr_user
 DB_PASSWORD=etr_password  # Override in production!
 
 # LLM Providers (optional, for natural language queries)
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
+# Kilocode (OpenRouter-compatible, recommended)
+KILOCODE_API_KEY=eyJhbGci...
+# KILOCODE_MODEL=google/gemini-2.5-flash-preview-05-20
+
+# Alternative providers
+# ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
 ```
 
 ### Custom Confidence Threshold
 ```python
 from enterprise_tool_router.tools.sql import SqlTool
-from enterprise_tool_router.llm.providers import AnthropicProvider
+from enterprise_tool_router.llm.providers import KilocodeProvider
 
 # Lower threshold for more permissive execution
 sql_tool = SqlTool(
-    llm_provider=AnthropicProvider(),
+    llm_provider=KilocodeProvider(),
     confidence_threshold=0.6  # Default: 0.7
 )
 ```
+
+**See [Kilocode Setup Guide](docs/kilocode_setup.md) for detailed configuration**
 
 ---
 
 ## 📚 Documentation
 
+- **[Kilocode Setup Guide](docs/kilocode_setup.md)** - Configure Kilocode LLM provider
 - **[Technical Deep-Dive](docs/llm-sql-generation.md)** - LLM SQL generation architecture
 - **[Architecture Overview](docs/architecture.md)** - System design patterns
 - **[ADR 001: SQL Safety Model](docs/adr/001-sql-safety-model.md)** - Safety design decisions
@@ -761,7 +770,7 @@ Built with:
 - [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
 - [Pydantic](https://docs.pydantic.dev/) - Data validation with Python type hints
 - [PostgreSQL](https://www.postgresql.org/) - Production-grade relational database
-- [Anthropic Claude](https://www.anthropic.com/) - LLM for SQL generation
+- [Kilocode](https://kilo.ai/) - LLM provider for SQL generation
 - [pytest](https://pytest.org/) - Testing framework
 
 ---

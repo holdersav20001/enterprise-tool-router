@@ -7,8 +7,10 @@ opentelemetry-sdk==1.30.0
 opentelemetry-instrumentation-fastapi==0.51b0
 opentelemetry-instrumentation-requests==0.51b0
 psycopg==3.2.4
+requests==2.32.3
 
 # Week 3: LLM providers (optional - install only if using real providers)
+# For Kilocode: included above (uses requests)
 # For Anthropic: pip install anthropic
 # For OpenAI: pip install openai
 # anthropic==0.40.0

@@ -1,14 +1,17 @@
 ﻿from __future__ import annotations
+import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 from .schemas import ToolName
 from .tools.sql import SqlTool
 from .tools.vector import VectorTool
 from .tools.rest import RestTool
 from .tools.base import ToolResult
+from .llm.base import LLMProvider
+from .llm.providers import KilocodeProvider
 
 @dataclass
 class Routed:
@@ -18,9 +21,24 @@ class Routed:
     elapsed_ms: float
 
 class ToolRouter:
-    def __init__(self) -> None:
+    def __init__(self, llm_provider: Optional[LLMProvider] = None) -> None:
+        """Initialize the tool router.
+
+        Args:
+            llm_provider: Optional LLM provider for natural language queries.
+                         If None, attempts to create KilocodeProvider from env vars.
+                         If KILOCODE_API_KEY is not set, SqlTool will only support raw SQL.
+        """
+        # If no provider specified, try to create KilocodeProvider from environment
+        if llm_provider is None and os.getenv("KILOCODE_API_KEY"):
+            try:
+                llm_provider = KilocodeProvider()
+            except Exception:
+                # If Kilocode initialization fails, continue without LLM provider
+                llm_provider = None
+
         self.tools: Dict[ToolName, object] = {
-            "sql": SqlTool(),
+            "sql": SqlTool(llm_provider=llm_provider),
             "vector": VectorTool(),
             "rest": RestTool(),
         }
