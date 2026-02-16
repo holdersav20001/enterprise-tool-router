@@ -1,10 +1,25 @@
-﻿{\"id\":\"sql_001\",\"input\":\"Show me Q4 revenue by region\",\"expected_tool\":\"sql\"}
-{\"id\":\"sql_002\",\"input\":\"Count number of failed jobs in the last 24 hours\",\"expected_tool\":\"sql\"}
-{\"id\":\"sql_003\",\"input\":\"Sum gross premium by day\",\"expected_tool\":\"sql\"}
-{\"id\":\"sql_004\",\"input\":\"Write SQL to group by product and count policies\",\"expected_tool\":\"sql\"}
-{\"id\":\"vec_001\",\"input\":\"Where is the runbook for schema mismatch incidents?\",\"expected_tool\":\"vector\"}
-{\"id\":\"vec_002\",\"input\":\"How do I handle CDC duplicate events? Check docs\",\"expected_tool\":\"vector\"}
-{\"id\":\"vec_003\",\"input\":\"Show me the procedure/playbook for ledger adjustment failures\",\"expected_tool\":\"vector\"}
-{\"id\":\"rest_001\",\"input\":\"Call API to check service health\",\"expected_tool\":\"rest\"}
-{\"id\":\"rest_002\",\"input\":\"Hit HTTP endpoint /status for payments service\",\"expected_tool\":\"rest\"}
-{\"id\":\"rest_003\",\"input\":\"Use API to fetch current queue depth\",\"expected_tool\":\"rest\"}
+{"id":"sql_001","input":"Show me Q4 revenue by region","expected_tool":"sql"}
+{"id":"sql_002","input":"Count number of failed jobs in the last 24 hours","expected_tool":"sql"}
+{"id":"sql_003","input":"Sum gross premium by day","expected_tool":"sql"}
+{"id":"sql_004","input":"Write SQL to group by product and count policies","expected_tool":"sql"}
+{"id":"sql_005","input":"What are the top revenue regions in Q3?","expected_tool":"sql"}
+{"id":"sql_006","input":"List all successful job runs from the last week","expected_tool":"sql"}
+{"id":"sql_007","input":"Show me total revenue by quarter","expected_tool":"sql"}
+{"id":"sql_008","input":"Get average units sold per region","expected_tool":"sql"}
+{"id":"sql_009","input":"Find job runs that took more than 10 minutes","expected_tool":"sql"}
+{"id":"sql_010","input":"What's the latest data in sales_fact table?","expected_tool":"sql"}
+{"id":"sql_011","input":"Count total audit log entries from today","expected_tool":"sql"}
+{"id":"sql_012","input":"Show me revenue trends across all quarters","expected_tool":"sql"}
+{"id":"vec_001","input":"Where is the runbook for schema mismatch incidents?","expected_tool":"vector"}
+{"id":"vec_002","input":"How do I handle CDC duplicate events? Check docs","expected_tool":"vector"}
+{"id":"vec_003","input":"Show me the procedure/playbook for ledger adjustment failures","expected_tool":"vector"}
+{"id":"vec_004","input":"Find documentation about error handling best practices","expected_tool":"vector"}
+{"id":"vec_005","input":"Search for deployment rollback procedures","expected_tool":"vector"}
+{"id":"vec_006","input":"Locate the troubleshooting guide for database connection issues","expected_tool":"vector"}
+{"id":"vec_007","input":"What does the architecture doc say about retry logic?","expected_tool":"vector"}
+{"id":"vec_008","input":"Find examples of implementing circuit breakers","expected_tool":"vector"}
+{"id":"rest_001","input":"Call API to check service health","expected_tool":"rest"}
+{"id":"rest_002","input":"Hit HTTP endpoint /status for payments service","expected_tool":"rest"}
+{"id":"rest_003","input":"Use API to fetch current queue depth","expected_tool":"rest"}
+{"id":"rest_004","input":"POST request to /api/v1/refresh to update cache","expected_tool":"rest"}
+{"id":"rest_005","input":"Make GET call to external service for validation","expected_tool":"rest"}
