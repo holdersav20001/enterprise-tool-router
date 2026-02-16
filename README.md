@@ -154,6 +154,124 @@ graph LR
 
 ---
 
+## 🎯 Tool Routing
+
+The router intelligently routes queries to **3 specialized tools** based on pattern matching:
+
+### **1. SQL Tool** 📊 ✅ Fully Implemented
+
+**Triggers:** Keywords like `SELECT`, `FROM`, `revenue`, `count`, `sum`, `GROUP BY`, or `sql`
+
+**Capabilities:**
+- **Natural Language Queries** → SQL Planner (LLM) → Validator → Execution
+- **Raw SQL Queries** → Validator → Execution (no LLM needed)
+- **5-Layer Safety Validation** (SELECT-only, no semicolons, table allowlist, LIMIT enforcement, keyword blocklist)
+- **Confidence Gating** (0.7 threshold - low confidence queries blocked for safety)
+- **Structured Output** (always returns Pydantic-validated JSON)
+
+**Examples:**
+```python
+"Show me Q4 revenue by region"              # → SQL (natural language)
+"SELECT * FROM sales_fact LIMIT 10"         # → SQL (raw SQL)
+"Count failed jobs in last 24 hours"        # → SQL (natural language)
+"What's the total revenue for Q3?"          # → SQL (natural language)
+```
+
+**Database:**
+- PostgreSQL with seeded data (sales_fact, job_runs, audit_log)
+- Read-only queries enforced
+- Row limits mandatory
+
+---
+
+### **2. Vector Tool** 🔍 🚧 Stub
+
+**Triggers:** Keywords like `runbook`, `docs`, `how do i`, `procedure`, `playbook`, or `doc`
+
+**Intended Use:**
+- Document retrieval (RAG - Retrieval Augmented Generation)
+- Runbook/playbook search
+- Knowledge base queries
+- Troubleshooting guides
+
+**Examples:**
+```python
+"Where is the runbook for schema mismatch?"     # → Vector
+"How do I handle CDC duplicate events?"         # → Vector
+"Find troubleshooting guide for DB connection"  # → Vector
+"What does the arch doc say about retry logic?" # → Vector
+```
+
+**Status:** Architecture in place, ready for integration with:
+- Pinecone, Weaviate, Qdrant (cloud vector DBs)
+- pgvector (PostgreSQL extension)
+- ChromaDB (local/embedded)
+
+**Implementation Week:** 4+
+
+---
+
+### **3. REST Tool** 🌐 🚧 Stub
+
+**Triggers:** Keywords like `call api`, `endpoint`, `http`, `status`, `service`, or `api`
+
+**Intended Use:**
+- External API calls
+- Service health checks
+- HTTP requests (GET, POST, etc.)
+- Microservice communication
+
+**Examples:**
+```python
+"Call API to check service health"          # → REST
+"Hit HTTP endpoint /status for payments"    # → REST
+"POST request to /api/v1/refresh"           # → REST
+"Make GET call to external service"         # → REST
+```
+
+**Status:** Architecture in place, ready for integration with:
+- `httpx` (async HTTP client)
+- `requests` (sync HTTP client)
+- API authentication/authorization
+- Rate limiting and retry logic
+
+**Implementation Week:** 4+
+
+---
+
+### **Routing Decision Flow**
+
+```mermaid
+graph TD
+    A[User Query] --> B{Pattern Match}
+
+    B -->|SQL keywords detected| C[SQL Tool ✅]
+    B -->|Doc keywords detected| D[Vector Tool 🚧]
+    B -->|API keywords detected| E[REST Tool 🚧]
+    B -->|No match| F[Unknown ❌]
+
+    C --> C1[Process Query]
+    D --> D1[Return Stub]
+    E --> E1[Return Stub]
+    F --> F1[Error: No confident tool match]
+
+    style C fill:#4CAF50
+    style C1 fill:#4CAF50
+    style D fill:#FF9800
+    style E fill:#9C27B0
+    style F fill:#F44336
+```
+
+### **Implementation Status**
+
+| Tool | Status | Implementation | Next Steps |
+|------|--------|----------------|------------|
+| **SQL** | ✅ **Production Ready** | Fully implemented with LLM planner, safety validation, confidence gating | Add more table schemas, query optimization |
+| **Vector** | 🚧 **Stub** | Architecture ready | Integrate vector DB (pgvector/Pinecone), add embedding model |
+| **REST** | 🚧 **Stub** | Architecture ready | Add HTTP client, auth, retry logic, rate limiting |
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
