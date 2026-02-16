@@ -1,9 +1,11 @@
 ﻿"""SQL tool with safety constraints for read-only queries."""
 import re
 from typing import Any
+from decimal import Decimal
 
 from .base import ToolResult
 from ..db import get_connection
+from ..schemas_sql import SqlResultSchema, SqlErrorSchema
 
 
 # Week 2 allowlist: only these tables can be queried
@@ -36,20 +38,26 @@ class SqlTool:
         3. Block DDL/DML keywords
         4. Enforce LIMIT if absent
         5. Table allowlist check
+
+        Returns:
+            ToolResult with SqlResultSchema on success or SqlErrorSchema on failure.
         """
         try:
             # Run safety checks
             safe_query = self._validate_and_sanitize(query)
 
             # Execute query
-            result = self._execute(safe_query)
+            result_schema = self._execute(safe_query)
 
-            return ToolResult(data=result)
+            # Return with validated Pydantic schema (converted to dict for ToolResult)
+            return ToolResult(data=result_schema.model_dump())
 
         except SafetyError as e:
-            return ToolResult(data={"error": str(e)}, notes="safety_violation")
+            error_schema = SqlErrorSchema(error=str(e))
+            return ToolResult(data=error_schema.model_dump(), notes="safety_violation")
         except Exception as e:
-            return ToolResult(data={"error": f"Query failed: {str(e)}"}, notes="execution_error")
+            error_schema = SqlErrorSchema(error=f"Query failed: {str(e)}")
+            return ToolResult(data=error_schema.model_dump(), notes="execution_error")
 
     def _validate_and_sanitize(self, query: str) -> str:
         """Validate and sanitize the query.
@@ -101,11 +109,12 @@ class SqlTool:
 
         return normalized
 
-    def _execute(self, query: str) -> dict[str, Any]:
+    def _execute(self, query: str) -> SqlResultSchema:
         """Execute the validated query against the database.
 
         Returns:
-            Dict with columns, rows, and row_count.
+            SqlResultSchema with validated, serializable data.
+            No raw database driver objects (e.g., Decimal) are leaked.
         """
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -114,11 +123,22 @@ class SqlTool:
                 # Get column names
                 columns = [desc[0] for desc in cur.description] if cur.description else []
 
-                # Fetch all rows
+                # Fetch all rows and convert to serializable types
                 rows = cur.fetchall()
+                serialized_rows = []
+                for row in rows:
+                    serialized_row = []
+                    for value in row:
+                        # Convert Decimal to float for JSON serialization
+                        if isinstance(value, Decimal):
+                            serialized_row.append(float(value))
+                        else:
+                            serialized_row.append(value)
+                    serialized_rows.append(serialized_row)
 
-                return {
-                    "columns": columns,
-                    "rows": [list(row) for row in rows],
-                    "row_count": len(rows)
-                }
+                # Return validated Pydantic schema
+                return SqlResultSchema(
+                    columns=columns,
+                    rows=serialized_rows,
+                    row_count=len(serialized_rows)
+                )

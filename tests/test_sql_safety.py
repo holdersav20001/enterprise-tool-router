@@ -1,7 +1,9 @@
 """Tests for SQL tool safety features."""
 import pytest
+from decimal import Decimal
 
 from enterprise_tool_router.tools.sql import SqlTool, SafetyError, BLOCKED_KEYWORDS, DEFAULT_LIMIT
+from enterprise_tool_router.schemas_sql import SqlResultSchema, SqlErrorSchema
 
 
 class TestSqlSafety:
@@ -148,3 +150,76 @@ class TestSqlToolIntegration:
         result = self.tool.run("SELECT id FROM sales_fact LIMIT 5")
 
         assert result.data["row_count"] == 5
+
+
+class TestSqlSchemas:
+    """Test Pydantic schema validation for SQL tool output."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.tool = SqlTool()
+
+    def test_success_result_validates_against_schema(self):
+        """Successful query results validate against SqlResultSchema."""
+        result = self.tool.run("SELECT region, revenue FROM sales_fact LIMIT 2")
+
+        # Should not have error
+        assert "error" not in result.data
+
+        # Data should validate against SqlResultSchema
+        schema = SqlResultSchema(**result.data)
+        assert schema.columns == ["region", "revenue"]
+        assert schema.row_count == 2
+        assert len(schema.rows) == 2
+        assert len(schema.rows[0]) == 2  # Two columns per row
+
+    def test_error_result_validates_against_error_schema(self):
+        """Error results validate against SqlErrorSchema."""
+        result = self.tool.run("DROP TABLE sales_fact")
+
+        # Should have error
+        assert "error" in result.data
+        assert result.notes == "safety_violation"
+
+        # Data should validate against SqlErrorSchema
+        schema = SqlErrorSchema(**result.data)
+        assert "Only SELECT" in schema.error
+
+    def test_no_raw_decimal_objects_in_output(self):
+        """Ensure Decimal objects are converted to float for JSON serialization."""
+        result = self.tool.run("SELECT revenue FROM sales_fact LIMIT 1")
+
+        # Get the first revenue value
+        revenue_value = result.data["rows"][0][0]
+
+        # Should be float, not Decimal (Decimal breaks JSON serialization)
+        assert isinstance(revenue_value, float), f"Expected float, got {type(revenue_value)}"
+        assert not isinstance(revenue_value, Decimal), "Decimal objects must be converted to float"
+
+    def test_schema_is_stable_and_complete(self):
+        """Output schema has all required fields with correct types."""
+        result = self.tool.run("SELECT id, region FROM sales_fact LIMIT 1")
+
+        # Validate schema structure
+        schema = SqlResultSchema(**result.data)
+
+        # Check types
+        assert isinstance(schema.columns, list)
+        assert all(isinstance(col, str) for col in schema.columns)
+        assert isinstance(schema.rows, list)
+        assert all(isinstance(row, list) for row in schema.rows)
+        assert isinstance(schema.row_count, int)
+
+        # Check immutability (frozen=True in schema)
+        with pytest.raises(Exception):  # Pydantic ValidationError or AttributeError
+            schema.row_count = 999
+
+    def test_empty_result_validates(self):
+        """Empty query results still validate against schema."""
+        result = self.tool.run("SELECT * FROM sales_fact WHERE 1=0 LIMIT 10")
+
+        # Should return empty but valid schema
+        schema = SqlResultSchema(**result.data)
+        assert schema.row_count == 0
+        assert schema.rows == []
+        assert len(schema.columns) > 0  # Columns still present even with no rows
