@@ -1,21 +1,89 @@
-﻿name: ci
+name: CI Quality Gates
+
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: etr_db
+          POSTGRES_USER: etr_user
+          POSTGRES_PASSWORD: etr_password
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U etr_user -d etr_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install deps
+          cache: 'pip'
+
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-      - name: Tests
-        run: pytest -q
-      - name: Eval
-        run: python eval/runner.py --cases eval/golden_cases_v0.jsonl --out eval/reports/v0.json
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5433 -U etr_user; do
+            echo "Waiting for Postgres..."
+            sleep 2
+          done
+        env:
+          PGPASSWORD: etr_password
+
+      - name: Initialize database schema
+        run: |
+          python scripts/init_db.py
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_NAME: etr_db
+          DB_USER: etr_user
+          DB_PASSWORD: etr_password
+
+      - name: Run tests
+        run: |
+          pytest tests/test_sql_safety.py tests/test_audit.py -v --tb=short
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_NAME: etr_db
+          DB_USER: etr_user
+          DB_PASSWORD: etr_password
+
+      - name: Run eval harness (quality gates)
+        run: |
+          python -c "import sys; sys.path.insert(0, 'src'); exec(open('eval/runner.py').read())" --cases eval/golden_cases_v0.jsonl --out eval/reports/ci_report.json
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_NAME: etr_db
+          DB_USER: etr_user
+          DB_PASSWORD: etr_password
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval/reports/ci_report.json
+          retention-days: 30

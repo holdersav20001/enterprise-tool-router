@@ -104,5 +104,9 @@ def main():
     if summary.schema_rate < 1.0:
         raise SystemExit("Schema compliance gate failed")
 
+    # Week 2 gate: accuracy must be >= 70%
+    if summary.accuracy < 0.70:
+        raise SystemExit(f"Accuracy gate failed: {summary.accuracy:.1%} < 70%")
+
 if __name__ == "__main__":
     main()
