@@ -15,7 +15,12 @@
       "Bash(scripts/init_db.py:*)",
       "Bash(docs/architecture.md:*)",
       "Bash(/tmp/write_security.py:*)",
-      "Bash(__NEW_LINE_13c7a80b29aa5c6b__ python /tmp/write_security.py)"
+      "Bash(__NEW_LINE_13c7a80b29aa5c6b__ python /tmp/write_security.py)",
+      "Bash(git rm:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(git remote set-url:*)"
     ]
   }
 }

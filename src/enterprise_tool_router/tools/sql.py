@@ -9,6 +9,7 @@ Flow:
   4. Planner-generated SQL goes through same safety validator
 """
 import re
+import uuid
 from typing import Any, Optional
 from decimal import Decimal
 
@@ -62,7 +63,7 @@ class SqlTool:
         self._planner = SqlPlanner(llm_provider) if llm_provider else None
         self._confidence_threshold = confidence_threshold
 
-    def run(self, query: str, correlation_id: str = "unknown") -> ToolResult:
+    def run(self, query: str, correlation_id: str | None = None) -> ToolResult:
         """Execute a safe SQL query against Postgres.
 
         Week 3 Update: Supports both raw SQL and natural language queries.
@@ -80,11 +81,15 @@ class SqlTool:
 
         Args:
             query: SQL query or natural language question
-            correlation_id: Correlation ID for tracing requests across layers
+            correlation_id: Optional correlation ID for tracing. Auto-generates UUID if not provided.
 
         Returns:
             ToolResult with SqlResultSchema on success or SqlErrorSchema on failure.
         """
+        # Generate correlation ID if not provided
+        if correlation_id is None:
+            correlation_id = str(uuid.uuid4())
+
         try:
             # Detect if this is raw SQL or natural language
             if self._is_raw_sql(query):

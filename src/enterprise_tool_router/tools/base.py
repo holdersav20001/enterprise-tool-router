@@ -8,12 +8,12 @@ class ToolResult:
 
 class Tool(Protocol):
     name: str
-    def run(self, query: str, correlation_id: str = "unknown") -> ToolResult:
+    def run(self, query: str, correlation_id: str | None = None) -> ToolResult:
         """Execute the tool with the given query.
 
         Args:
             query: The query string to execute
-            correlation_id: Correlation ID for tracing and audit logging
+            correlation_id: Optional correlation ID for tracing. Auto-generates UUID if not provided.
 
         Returns:
             ToolResult with execution results

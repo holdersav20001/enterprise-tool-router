@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -35,16 +36,20 @@ class ToolRouter:
             return "rest", 0.70
         return "unknown", 0.30
 
-    def handle(self, query: str, correlation_id: str = "unknown") -> Routed:
+    def handle(self, query: str, correlation_id: str | None = None) -> Routed:
         """Route and execute a query with the appropriate tool.
 
         Args:
             query: The user query to route and execute
-            correlation_id: Correlation ID for tracing requests across layers
+            correlation_id: Optional correlation ID for tracing. Auto-generates UUID if not provided.
 
         Returns:
             Routed object with tool name, confidence, result, and elapsed time
         """
+        # Generate correlation ID if not provided
+        if correlation_id is None:
+            correlation_id = str(uuid.uuid4())
+
         start = time.perf_counter()
         tool_name, conf = self.route(query)
         if tool_name == "unknown":
