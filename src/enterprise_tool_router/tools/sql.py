@@ -62,7 +62,7 @@ class SqlTool:
         self._planner = SqlPlanner(llm_provider) if llm_provider else None
         self._confidence_threshold = confidence_threshold
 
-    def run(self, query: str) -> ToolResult:
+    def run(self, query: str, correlation_id: str = "unknown") -> ToolResult:
         """Execute a safe SQL query against Postgres.
 
         Week 3 Update: Supports both raw SQL and natural language queries.
@@ -77,6 +77,10 @@ class SqlTool:
         3. Block DDL/DML keywords
         4. Enforce LIMIT if absent
         5. Table allowlist check
+
+        Args:
+            query: SQL query or natural language question
+            correlation_id: Correlation ID for tracing requests across layers
 
         Returns:
             ToolResult with SqlResultSchema on success or SqlErrorSchema on failure.

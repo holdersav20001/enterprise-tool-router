@@ -35,13 +35,22 @@ class ToolRouter:
             return "rest", 0.70
         return "unknown", 0.30
 
-    def handle(self, query: str) -> Routed:
+    def handle(self, query: str, correlation_id: str = "unknown") -> Routed:
+        """Route and execute a query with the appropriate tool.
+
+        Args:
+            query: The user query to route and execute
+            correlation_id: Correlation ID for tracing requests across layers
+
+        Returns:
+            Routed object with tool name, confidence, result, and elapsed time
+        """
         start = time.perf_counter()
         tool_name, conf = self.route(query)
         if tool_name == "unknown":
             res = ToolResult(data={"message": "No confident tool match", "query": query}, notes="unknown")
         else:
-            res = self.tools[tool_name].run(query)  # type: ignore[index]
+            res = self.tools[tool_name].run(query, correlation_id=correlation_id)  # type: ignore[index]
         elapsed = (time.perf_counter() - start) * 1000
         return Routed(tool=tool_name, confidence=conf, result=res, elapsed_ms=elapsed)
 
