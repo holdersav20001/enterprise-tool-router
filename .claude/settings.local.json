@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker compose down:*)",
+      "Bash(docker compose:*)",
+      "Bash(set PGPASSWORD=etr_password:*)",
+      "Bash(psql:*)",
+      "Bash(netstat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(set:*)",
+      "Bash(.github/workflows/ci.yml:*)",
+      "Bash(scripts/init_db.py:*)",
+      "Bash(docs/architecture.md:*)",
+      "Bash(/tmp/write_security.py:*)",
+      "Bash(__NEW_LINE_13c7a80b29aa5c6b__ python /tmp/write_security.py)"
+    ]
+  }
+}
