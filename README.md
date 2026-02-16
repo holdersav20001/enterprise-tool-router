@@ -63,6 +63,41 @@ sequenceDiagram
 - Token usage and cost tracking
 - Evaluation harness with CI quality gates
 
+### 🔗 **End-to-End Request Tracing**
+Every request carries a unique correlation ID through all layers, enabling:
+- **Distributed tracing** across microservices
+- **Deterministic debugging** of production issues
+- **Regulatory compliance** with audit trails
+- **Performance analysis** across the entire stack
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Middleware
+    participant Router
+    participant Tool
+    participant Database
+    participant AuditLog
+
+    Client->>Middleware: POST /query<br/>(x-correlation-id: abc-123)
+    Middleware->>Middleware: Extract or generate UUID
+    Note over Middleware: correlation_id = "abc-123"
+
+    Middleware->>Router: handle(query, correlation_id)
+    Router->>Tool: run(query, correlation_id)
+    Tool->>Database: execute(sql)
+    Database-->>Tool: results
+
+    Tool->>AuditLog: log(correlation_id, ...)
+    Note over AuditLog: Stores: abc-123
+
+    Tool-->>Router: ToolResult
+    Router-->>Middleware: Routed(result)
+    Middleware-->>Client: Response<br/>(trace_id: abc-123)
+
+    Note over Client,AuditLog: Same correlation ID flows through entire request lifecycle
+```
+
 ---
 
 ## 🏗️ Architecture
@@ -182,6 +217,140 @@ curl -X POST http://localhost:8000/query \
   "cost_usd": 0.0023
 }
 ```
+
+---
+
+## 🔗 Request Tracing & Correlation IDs
+
+### **How It Works**
+
+Every request automatically gets a **unique correlation ID** that flows through:
+1. HTTP middleware (extracts from header or generates UUID)
+2. Router layer (propagates to tools)
+3. Tool execution (available for internal logging)
+4. Audit logging (captured in database)
+5. HTTP response (returned to client)
+
+### **Usage Examples**
+
+#### **HTTP API with Custom Correlation ID**
+```bash
+# Client provides correlation ID
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -H "x-correlation-id: my-trace-abc-123" \
+  -d '{"query": "Show me Q4 revenue"}'
+
+# Response includes same ID
+{
+  "tool_used": "sql",
+  "trace_id": "my-trace-abc-123",  # ← Same ID returned
+  "result": {...}
+}
+```
+
+#### **HTTP API with Auto-Generated ID**
+```bash
+# No correlation ID header provided
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Show me Q4 revenue"}'
+
+# System auto-generates UUID
+{
+  "tool_used": "sql",
+  "trace_id": "f3e4d5c6-b7a8-9012-cdef-123456789abc",  # ← Auto-generated
+  "result": {...}
+}
+```
+
+#### **Programmatic Usage**
+```python
+from enterprise_tool_router.router import ToolRouter
+
+router = ToolRouter()
+
+# Provide your own correlation ID
+result = router.handle(
+    "Show me sales data",
+    correlation_id="my-batch-job-001"
+)
+print(result.result.data)
+
+# Or let it auto-generate
+result = router.handle("Show me sales data")
+# correlation_id = "a1b2c3d4-5e6f-7890-abcd-ef1234567890" (auto-generated)
+```
+
+#### **Querying Audit Logs by Correlation ID**
+```python
+from enterprise_tool_router.audit import get_audit_records
+
+# Find all operations for a specific request
+records = get_audit_records(correlation_id="my-trace-abc-123")
+
+for record in records:
+    print(f"Tool: {record['tool']}")
+    print(f"Action: {record['action']}")
+    print(f"Success: {record['success']}")
+    print(f"Duration: {record['duration_ms']}ms")
+```
+
+#### **SQL Query on Audit Logs**
+```sql
+-- Trace a single request across all layers
+SELECT
+    ts,
+    tool,
+    action,
+    success,
+    duration_ms
+FROM audit_log
+WHERE correlation_id = 'my-trace-abc-123'
+ORDER BY ts;
+
+-- Find slow queries
+SELECT
+    correlation_id,
+    tool,
+    duration_ms,
+    ts
+FROM audit_log
+WHERE duration_ms > 1000
+  AND ts > NOW() - INTERVAL '24 hours'
+ORDER BY duration_ms DESC
+LIMIT 20;
+
+-- Debug failed requests
+SELECT
+    correlation_id,
+    tool,
+    action,
+    input_hash,
+    ts
+FROM audit_log
+WHERE success = false
+  AND ts > NOW() - INTERVAL '1 hour';
+```
+
+### **Production Debugging Workflow**
+
+1. **User reports error** → provides `trace_id` from response
+2. **Query audit logs** by `correlation_id`
+3. **See exact flow**: routing → tool selection → execution → result
+4. **Identify failure point** with timestamps and success flags
+5. **Reproduce issue** using captured input data (via hash lookup)
+
+### **Benefits**
+
+| Benefit | Description |
+|---------|-------------|
+| **Distributed Tracing** | Track requests across multiple services/microservices |
+| **Root Cause Analysis** | Pinpoint exact failure points in multi-layer systems |
+| **Performance Monitoring** | Measure latency at each layer for a single request |
+| **Regulatory Compliance** | Immutable audit trail for financial/healthcare systems |
+| **Production Debugging** | Debug issues in production without reproducing locally |
+| **SLA Monitoring** | Track end-to-end request duration and success rates |
 
 ---
 
