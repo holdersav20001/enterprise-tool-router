@@ -1,11 +1,23 @@
-﻿"""SQL tool with safety constraints for read-only queries."""
+﻿"""SQL tool with safety constraints for read-only queries.
+
+Week 3 Update: Integrated with SQL Planner for natural language queries.
+
+Flow:
+  1. Detect if query is raw SQL or natural language
+  2. If natural language: call planner → validate → execute
+  3. If raw SQL: validate → execute (Week 2 behavior)
+  4. Planner-generated SQL goes through same safety validator
+"""
 import re
-from typing import Any
+from typing import Any, Optional
 from decimal import Decimal
 
 from .base import ToolResult
 from ..db import get_connection
 from ..schemas_sql import SqlResultSchema, SqlErrorSchema
+from ..sql_planner import SqlPlanner
+from ..schemas_sql_planner import SqlPlanSchema, SqlPlanErrorSchema
+from ..llm.base import LLMProvider
 
 
 # Week 2 allowlist: only these tables can be queried
@@ -29,10 +41,26 @@ class SafetyError(Exception):
 class SqlTool:
     name = "sql"
 
+    def __init__(self, llm_provider: Optional[LLMProvider] = None):
+        """Initialize SQL tool.
+
+        Args:
+            llm_provider: Optional LLM provider for natural language queries.
+                         If None, only raw SQL queries are supported.
+        """
+        self._llm_provider = llm_provider
+        self._planner = SqlPlanner(llm_provider) if llm_provider else None
+
     def run(self, query: str) -> ToolResult:
         """Execute a safe SQL query against Postgres.
 
-        Safety rules:
+        Week 3 Update: Supports both raw SQL and natural language queries.
+
+        Flow:
+          - If query looks like raw SQL: validate → execute (Week 2 flow)
+          - If query is natural language: planner → validate → execute (Week 3 flow)
+
+        Safety rules (applied to ALL queries, including LLM-generated):
         1. Only SELECT statements allowed
         2. No semicolons (prevents multiple statements)
         3. Block DDL/DML keywords
@@ -43,10 +71,38 @@ class SqlTool:
             ToolResult with SqlResultSchema on success or SqlErrorSchema on failure.
         """
         try:
-            # Run safety checks
-            safe_query = self._validate_and_sanitize(query)
+            # Detect if this is raw SQL or natural language
+            if self._is_raw_sql(query):
+                # Week 2 flow: direct validation and execution
+                safe_query = self._validate_and_sanitize(query)
+            else:
+                # Week 3 flow: use planner, then validate
+                if not self._planner:
+                    raise SafetyError("Natural language queries require LLM provider")
 
-            # Execute query
+                # Generate SQL from natural language
+                plan = self._planner.plan(query)
+
+                # Check if planner failed
+                if isinstance(plan, SqlPlanErrorSchema):
+                    error_schema = SqlErrorSchema(error=f"SQL generation failed: {plan.error}")
+                    return ToolResult(data=error_schema.model_dump(), notes="planner_error")
+
+                # Planner succeeded - now validate the generated SQL
+                # This is CRITICAL: LLM output goes through same safety checks
+                try:
+                    safe_query = self._validate_and_sanitize(plan.sql)
+                except SafetyError as e:
+                    # LLM-generated SQL failed validation - reject it
+                    error_schema = SqlErrorSchema(
+                        error=f"Generated SQL failed safety validation: {str(e)}"
+                    )
+                    return ToolResult(
+                        data=error_schema.model_dump(),
+                        notes="planner_validation_failed"
+                    )
+
+            # Execute the validated query (from either path)
             result_schema = self._execute(safe_query)
 
             # Return with validated Pydantic schema (converted to dict for ToolResult)
@@ -58,6 +114,34 @@ class SqlTool:
         except Exception as e:
             error_schema = SqlErrorSchema(error=f"Query failed: {str(e)}")
             return ToolResult(data=error_schema.model_dump(), notes="execution_error")
+
+    def _is_raw_sql(self, query: str) -> bool:
+        """Detect if query is raw SQL or natural language.
+
+        Heuristic:
+        - If starts with common SQL keywords, treat as raw SQL
+        - This includes both valid (SELECT) and invalid (DROP, INSERT, etc.) SQL
+        - Otherwise, treat as natural language
+
+        Args:
+            query: Input query string
+
+        Returns:
+            True if raw SQL, False if natural language
+        """
+        normalized = query.strip().upper()
+
+        # Common SQL statement keywords (both valid and invalid)
+        sql_keywords = [
+            "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE",
+            "ALTER", "TRUNCATE", "GRANT", "REVOKE", "WITH", "COPY"
+        ]
+
+        for keyword in sql_keywords:
+            if normalized.startswith(keyword):
+                return True
+
+        return False
 
     def _validate_and_sanitize(self, query: str) -> str:
         """Validate and sanitize the query.
