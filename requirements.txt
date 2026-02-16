@@ -1,0 +1,8 @@
+﻿fastapi==0.115.8
+uvicorn[standard]==0.30.6
+pydantic==2.10.6
+prometheus-client==0.21.1
+opentelemetry-api==1.30.0
+opentelemetry-sdk==1.30.0
+opentelemetry-instrumentation-fastapi==0.51b0
+opentelemetry-instrumentation-requests==0.51b0

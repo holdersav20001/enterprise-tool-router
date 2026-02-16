@@ -1,0 +1,7 @@
+﻿{
+  "python.defaultInterpreterPath": ".venv\\\\Scripts\\\\python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["-q"],
+  "editor.formatOnSave": true,
+  "files.trimTrailingWhitespace": true
+}
