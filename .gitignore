@@ -22,3 +22,9 @@ venv/
 # Logs / local artifacts
 logs/
 eval/reports/
+
+# Test/debug files
+test_conn.py
+
+# Claude Code local settings
+.claude/settings.local.json
