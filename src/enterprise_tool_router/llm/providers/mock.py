@@ -8,7 +8,7 @@ Week 3 Commit 16: LLM Abstraction Layer
 from typing import Type, TypeVar
 from pydantic import BaseModel
 
-from ..base import LLMProvider, LLMUsage, StructuredOutputError
+from ..base import LLMProvider, LLMUsage, StructuredOutputError, LLMTimeoutError
 
 
 T = TypeVar('T', bound=BaseModel)
@@ -35,6 +35,7 @@ class MockProvider(LLMProvider):
         self,
         response_data: dict | None = None,
         should_fail: bool = False,
+        should_timeout: bool = False,
         input_tokens: int = 100,
         output_tokens: int = 50
     ):
@@ -43,31 +44,39 @@ class MockProvider(LLMProvider):
         Args:
             response_data: Dict to return as structured response
             should_fail: If True, raise StructuredOutputError
+            should_timeout: If True, raise LLMTimeoutError (Week 4 Commit 21)
             input_tokens: Mock input token count
             output_tokens: Mock output token count
         """
         self._response_data = response_data or {}
         self._should_fail = should_fail
+        self._should_timeout = should_timeout
         self._input_tokens = input_tokens
         self._output_tokens = output_tokens
 
     def generate_structured(
         self,
         prompt: str,
-        response_schema: Type[T]
+        response_schema: Type[T],
+        timeout: float = 60.0
     ) -> tuple[T, LLMUsage]:
         """Generate mock structured output.
 
         Args:
             prompt: The prompt (ignored in mock)
             response_schema: Pydantic model to validate against
+            timeout: Timeout in seconds (used for testing timeout behavior)
 
         Returns:
             Tuple of (validated_response, mock_usage)
 
         Raises:
+            LLMTimeoutError: If should_timeout is True (Week 4 Commit 21)
             StructuredOutputError: If should_fail is True or validation fails
         """
+        if self._should_timeout:
+            raise LLMTimeoutError(f"Mock provider simulated timeout after {timeout}s")
+
         if self._should_fail:
             raise StructuredOutputError("Mock provider configured to fail")
 

@@ -40,6 +40,15 @@ class StructuredOutputError(LLMError):
     pass
 
 
+class LLMTimeoutError(LLMError):
+    """Raised when LLM request exceeds timeout threshold.
+
+    Week 4 Commit 21: Timeout protection for LLM calls.
+    This prevents the system from hanging on slow or unresponsive LLM providers.
+    """
+    pass
+
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers.
 
@@ -57,18 +66,21 @@ class LLMProvider(ABC):
     def generate_structured(
         self,
         prompt: str,
-        response_schema: Type[T]
+        response_schema: Type[T],
+        timeout: float = 60.0
     ) -> tuple[T, LLMUsage]:
         """Generate structured output from the LLM.
 
         Args:
             prompt: The prompt to send to the LLM
             response_schema: Pydantic model class for response validation
+            timeout: Maximum time to wait for LLM response in seconds (default: 60.0)
 
         Returns:
             Tuple of (validated_response, usage_stats)
 
         Raises:
+            LLMTimeoutError: If LLM request exceeds timeout
             StructuredOutputError: If LLM output doesn't match schema
             LLMError: For other LLM-related errors
 
@@ -80,7 +92,8 @@ class LLMProvider(ABC):
             >>> provider = AnthropicProvider()
             >>> result, usage = provider.generate_structured(
             ...     "Generate SQL for: show revenue by region",
-            ...     SqlPlan
+            ...     SqlPlan,
+            ...     timeout=30.0
             ... )
             >>> assert isinstance(result, SqlPlan)
             >>> assert 0.0 <= result.confidence <= 1.0

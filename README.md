@@ -722,6 +722,31 @@ sql_tool = SqlTool(
 )
 ```
 
+### LLM Timeout Configuration
+Week 4 adds timeout protection to prevent hanging on slow/unresponsive LLM providers:
+
+```python
+from enterprise_tool_router.tools.sql import SqlTool
+from enterprise_tool_router.llm.providers import OpenRouterProvider
+
+# Configure LLM timeout (prevents hanging)
+sql_tool = SqlTool(
+    llm_provider=OpenRouterProvider(),
+    llm_timeout=15.0  # Default: 30.0 seconds
+)
+
+# Timeout can also be configured per-query
+from enterprise_tool_router.sql_planner import SqlPlanner
+planner = SqlPlanner(OpenRouterProvider())
+result = planner.plan("Show revenue by region", timeout=10.0)
+```
+
+**Features:**
+- Graceful timeout handling (returns error, doesn't hang)
+- Configurable per-tool or per-query
+- Preserves deterministic validator authority
+- Full test coverage with MockProvider
+
 **See [OpenRouter Setup Guide](docs/openrouter_setup.md) for detailed configuration**
 
 ---
@@ -752,12 +777,25 @@ sql_tool = SqlTool(
 - 70% routing accuracy gate
 
 ### ✅ Week 3: LLM SQL Generation
-- LLM provider abstraction (Anthropic, OpenAI, Mock)
+- LLM provider abstraction (Anthropic, OpenAI, OpenRouter, Mock)
 - Natural language → SQL planner with Pydantic schemas
 - Confidence threshold gating (0.7 default)
 - Integration with deterministic validator
 - 80% routing accuracy gate, 100% planner schema compliance
 - **104 tests passing**
+
+### 🚧 Week 4: Resilience & Observability (In Progress)
+- **✅ Commit 21: LLM Timeout + Cancellation**
+  - Configurable timeout for LLM calls (default: 30s)
+  - Graceful fallback on timeout (no hanging)
+  - LLMTimeoutError exception with actionable messages
+  - **114 tests passing** (10 new timeout tests)
+- ⏳ Commit 22: Circuit Breaker (LLM)
+- ⏳ Commit 23: Redis Caching Layer
+- ⏳ Commit 24: Rate Limiting
+- ⏳ Commit 25: Structured Error Taxonomy
+- ⏳ Commit 26: Token + Cost Metrics
+- ⏳ Commit 27: Shadow Evaluation Mode
 
 ---
 

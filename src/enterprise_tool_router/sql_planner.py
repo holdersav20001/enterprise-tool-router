@@ -23,7 +23,7 @@ Safety:
 from typing import Optional
 from pydantic import ValidationError
 
-from .llm.base import LLMProvider, StructuredOutputError
+from .llm.base import LLMProvider, StructuredOutputError, LLMTimeoutError
 from .schemas_sql_planner import SqlPlanSchema, SqlPlanErrorSchema
 
 
@@ -94,18 +94,24 @@ class SqlPlanner:
         """
         self._llm = llm_provider
 
-    def plan(self, natural_language_query: str) -> SqlPlanSchema | SqlPlanErrorSchema:
+    def plan(
+        self,
+        natural_language_query: str,
+        timeout: float = 30.0
+    ) -> SqlPlanSchema | SqlPlanErrorSchema:
         """Generate SQL from a natural language query.
 
         Args:
             natural_language_query: User's query in natural language
+            timeout: Maximum time to wait for LLM response in seconds (default: 30.0)
+                     Week 4 Commit 21: Timeout protection
 
         Returns:
             SqlPlanSchema with generated SQL, confidence, and explanation
             OR SqlPlanErrorSchema if generation fails
 
         Example:
-            >>> result = planner.plan("Show revenue by region")
+            >>> result = planner.plan("Show revenue by region", timeout=15.0)
             >>> if isinstance(result, SqlPlanSchema):
             ...     print(f"SQL: {result.sql}")
             ...     print(f"Confidence: {result.confidence}")
@@ -114,13 +120,25 @@ class SqlPlanner:
             # Build the prompt
             prompt = self._build_prompt(natural_language_query)
 
-            # Generate structured output from LLM
-            plan, usage = self._llm.generate_structured(prompt, SqlPlanSchema)
+            # Generate structured output from LLM with timeout protection
+            # Week 4 Commit 21: Pass timeout to prevent hanging
+            plan, usage = self._llm.generate_structured(
+                prompt,
+                SqlPlanSchema,
+                timeout=timeout
+            )
 
             # plan is already validated by the LLM provider
             # and by SqlPlanSchema's field validators
             return plan
 
+        except LLMTimeoutError as e:
+            # Week 4 Commit 21: Graceful handling of timeout
+            # System does not hang - returns safe error instead
+            return SqlPlanErrorSchema(
+                error=f"Query generation timed out after {timeout}s. Please try a simpler query or increase timeout.",
+                confidence=0.0
+            )
         except (StructuredOutputError, ValidationError) as e:
             # LLM output didn't match schema or validation failed
             return SqlPlanErrorSchema(

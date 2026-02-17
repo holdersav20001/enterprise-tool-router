@@ -11,7 +11,7 @@ from typing import Type, TypeVar
 from pydantic import BaseModel
 import requests
 
-from ..base import LLMProvider, LLMUsage, LLMError, StructuredOutputError
+from ..base import LLMProvider, LLMUsage, LLMError, StructuredOutputError, LLMTimeoutError
 
 
 T = TypeVar('T', bound=BaseModel)
@@ -61,7 +61,8 @@ class OpenRouterProvider(LLMProvider):
     def generate_structured(
         self,
         prompt: str,
-        response_schema: Type[T]
+        response_schema: Type[T],
+        timeout: float = 60.0
     ) -> tuple[T, LLMUsage]:
         """Generate structured output using OpenRouter.
 
@@ -71,11 +72,13 @@ class OpenRouterProvider(LLMProvider):
         Args:
             prompt: The prompt to send to OpenRouter
             response_schema: Pydantic model for response validation
+            timeout: Maximum time to wait for response in seconds (default: 60.0)
 
         Returns:
             Tuple of (validated_response, usage_stats)
 
         Raises:
+            LLMTimeoutError: If request exceeds timeout
             StructuredOutputError: If OpenRouter output doesn't match schema
             LLMError: For API errors
         """
@@ -114,7 +117,7 @@ class OpenRouterProvider(LLMProvider):
                 self.API_ENDPOINT,
                 json=payload,
                 headers=headers,
-                timeout=60
+                timeout=timeout
             )
 
             # Check for HTTP errors
@@ -148,6 +151,11 @@ class OpenRouterProvider(LLMProvider):
 
         except StructuredOutputError:
             raise
+        except requests.exceptions.Timeout as e:
+            # Week 4 Commit 21: Explicit timeout error handling
+            raise LLMTimeoutError(
+                f"OpenRouter request exceeded timeout of {timeout}s: {e}"
+            )
         except requests.exceptions.RequestException as e:
             raise LLMError(f"OpenRouter API request failed: {e}")
         except Exception as e:

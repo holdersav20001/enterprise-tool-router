@@ -37,6 +37,10 @@ DEFAULT_LIMIT = 200
 # Queries with confidence below this threshold won't execute automatically
 DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
+# Default LLM timeout (Week 4 Commit 21)
+# Maximum time to wait for LLM response in seconds
+DEFAULT_LLM_TIMEOUT = 30.0
+
 
 class SafetyError(Exception):
     """Raised when a query fails safety checks."""
@@ -49,7 +53,8 @@ class SqlTool:
     def __init__(
         self,
         llm_provider: Optional[LLMProvider] = None,
-        confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD
+        confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        llm_timeout: float = DEFAULT_LLM_TIMEOUT
     ):
         """Initialize SQL tool.
 
@@ -58,10 +63,13 @@ class SqlTool:
                          If None, only raw SQL queries are supported.
             confidence_threshold: Minimum confidence score (0.0-1.0) required
                                  to execute LLM-generated SQL. Default: 0.7
+            llm_timeout: Maximum time to wait for LLM response in seconds. Default: 30.0
+                        Week 4 Commit 21: Timeout protection
         """
         self._llm_provider = llm_provider
         self._planner = SqlPlanner(llm_provider) if llm_provider else None
         self._confidence_threshold = confidence_threshold
+        self._llm_timeout = llm_timeout
 
     def run(self, query: str, correlation_id: str | None = None) -> ToolResult:
         """Execute a safe SQL query against Postgres.
@@ -101,7 +109,8 @@ class SqlTool:
                     raise SafetyError("Natural language queries require LLM provider")
 
                 # Generate SQL from natural language
-                plan = self._planner.plan(query)
+                # Week 4 Commit 21: Pass timeout to prevent hanging
+                plan = self._planner.plan(query, timeout=self._llm_timeout)
 
                 # Check if planner failed
                 if isinstance(plan, SqlPlanErrorSchema):
