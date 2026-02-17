@@ -174,26 +174,30 @@ class SqlTool:
 
             # Week 4 Commit 27: Store successful query in history
             if self._planner and isinstance(result_schema, SqlResultSchema) and not self._is_raw_sql(query):
-                from .query_storage import store_query
-                import json
+                try:
+                    from ..query_storage import store_query
+                    import json
 
-                # Calculate result size
-                result_json = json.dumps(result_schema.model_dump())
-                result_size_bytes = len(result_json.encode('utf-8'))
+                    # Calculate result size
+                    result_json = json.dumps(result_schema.model_dump())
+                    result_size_bytes = len(result_json.encode('utf-8'))
 
-                # Store in query_history table
-                store_query(
-                    natural_language_query=query,
-                    generated_sql=safe_query,
-                    confidence=plan.confidence if 'plan' in locals() and hasattr(plan, 'confidence') else 1.0,
-                    result_size_bytes=result_size_bytes,
-                    row_count=result_schema.row_count,
-                    execution_time_ms=int(elapsed * 1000),
-                    tokens_input=tokens_input,
-                    tokens_output=tokens_output,
-                    cost_usd=cost_usd,
-                    correlation_id=correlation_id
-                )
+                    # Store in query_history table
+                    store_query(
+                        natural_language_query=query,
+                        generated_sql=safe_query,
+                        confidence=plan.confidence if 'plan' in locals() and hasattr(plan, 'confidence') else 1.0,
+                        result_size_bytes=result_size_bytes,
+                        row_count=result_schema.row_count,
+                        execution_time_ms=int(elapsed * 1000),
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                        cost_usd=cost_usd,
+                        correlation_id=correlation_id
+                    )
+                except Exception:
+                    # Query history not available - gracefully skip storage
+                    pass
 
             # Return with validated Pydantic schema (converted to dict for ToolResult)
             # Week 4 Commit 26: Include token usage and cost

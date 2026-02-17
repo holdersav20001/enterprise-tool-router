@@ -156,16 +156,21 @@ class SqlPlanner:
 
         # Week 4 Commit 27: Check query_history (warm cache)
         if not bypass_cache:
-            from .query_storage import lookup_query
-            stored_query = lookup_query(natural_language_query)
-            if stored_query is not None:
-                # Found in history! Reuse the SQL
-                self._last_usage = None  # Historical queries have zero cost
-                return SqlPlanSchema(
-                    sql=stored_query["generated_sql"],
-                    confidence=stored_query["confidence"],
-                    explanation=f"Reused from query history (last used: {stored_query['last_used_at']})"
-                )
+            try:
+                from .query_storage import lookup_query
+                stored_query = lookup_query(natural_language_query)
+                if stored_query is not None:
+                    # Found in history! Reuse the SQL
+                    self._last_usage = None  # Historical queries have zero cost
+                    return SqlPlanSchema(
+                        sql=stored_query["generated_sql"],
+                        confidence=stored_query["confidence"],
+                        explanation=f"Reused from query history (last used: {stored_query['last_used_at']})"
+                    )
+            except Exception:
+                # Query history not available (table doesn't exist, DB error, etc.)
+                # Gracefully fall through to LLM generation
+                pass
 
         # Week 4 Commit 22: Check circuit breaker before calling LLM
         if not self._circuit_breaker.can_execute():
