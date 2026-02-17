@@ -236,10 +236,10 @@ def __init__(
 **Example**:
 ```python
 from enterprise_tool_router.tools.sql import SqlTool
-from enterprise_tool_router.llm.providers import AnthropicProvider
+from enterprise_tool_router.llm.providers import OpenRouterProvider
 
 # With LLM provider (natural language support)
-provider = AnthropicProvider()
+provider = OpenRouterProvider()  # Or AnthropicProvider(), OpenAIProvider()
 tool = SqlTool(llm_provider=provider, confidence_threshold=0.7)
 
 # Without LLM provider (raw SQL only)
@@ -395,9 +395,9 @@ def plan(self, natural_language_query: str) -> SqlPlanSchema | SqlPlanErrorSchem
 
 ```python
 from enterprise_tool_router.sql_planner import SqlPlanner
-from enterprise_tool_router.llm.providers import AnthropicProvider
+from enterprise_tool_router.llm.providers import OpenRouterProvider
 
-provider = AnthropicProvider()
+provider = OpenRouterProvider()  # Or AnthropicProvider(), OpenAIProvider()
 planner = SqlPlanner(provider)
 
 # Generate SQL
@@ -713,12 +713,13 @@ if plan.confidence < self._confidence_threshold:
 
 ```python
 from enterprise_tool_router.tools.sql import SqlTool
-from enterprise_tool_router.llm.providers import AnthropicProvider
+from enterprise_tool_router.llm.providers import OpenRouterProvider
 import os
 
 # Setup
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-..."
-provider = AnthropicProvider()
+os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-..."
+os.environ["OPENROUTER_MODEL"] = "openrouter/aurora-alpha"  # Free tier
+provider = OpenRouterProvider()
 tool = SqlTool(llm_provider=provider, confidence_threshold=0.7)
 
 # User query
@@ -832,9 +833,15 @@ assert result.notes != "low_confidence"  # Confidence 0.88 > 0.7
 
 ```bash
 # LLM Provider (choose one)
+# OpenRouter (Recommended - 200+ models)
+export OPENROUTER_API_KEY="sk-or-v1-..."
+export OPENROUTER_MODEL="openrouter/aurora-alpha"  # Optional, free tier
+
+# Anthropic Claude
 export ANTHROPIC_API_KEY="sk-ant-..."
 export ANTHROPIC_MODEL="claude-3-5-sonnet-20241022"  # Optional
 
+# OpenAI GPT
 export OPENAI_API_KEY="sk-..."
 export OPENAI_MODEL="gpt-4o"  # Optional
 
@@ -850,10 +857,10 @@ export DB_PASSWORD="etr_password"
 
 ```python
 from enterprise_tool_router.tools.sql import SqlTool
-from enterprise_tool_router.llm.providers import AnthropicProvider
+from enterprise_tool_router.llm.providers import OpenRouterProvider
 
 # Default configuration (threshold 0.7)
-provider = AnthropicProvider()
+provider = OpenRouterProvider(model="openrouter/aurora-alpha")  # Free tier
 tool = SqlTool(llm_provider=provider)
 
 # Custom confidence threshold
@@ -873,6 +880,11 @@ tool = SqlTool(
     llm_provider=provider,
     confidence_threshold=0.9  # Very strict
 )
+
+# Alternative providers
+from enterprise_tool_router.llm.providers import AnthropicProvider, OpenAIProvider
+provider_claude = AnthropicProvider()
+provider_gpt = OpenAIProvider()
 ```
 
 ---
