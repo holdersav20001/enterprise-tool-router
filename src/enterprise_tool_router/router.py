@@ -12,6 +12,7 @@ from .tools.rest import RestTool
 from .tools.base import ToolResult
 from .llm.base import LLMProvider
 from .llm.providers import OpenRouterProvider, KilocodeProvider
+from .rate_limiter import RateLimiter, RateLimitError
 
 @dataclass
 class Routed:
@@ -21,7 +22,11 @@ class Routed:
     elapsed_ms: float
 
 class ToolRouter:
-    def __init__(self, llm_provider: Optional[LLMProvider] = None) -> None:
+    def __init__(
+        self,
+        llm_provider: Optional[LLMProvider] = None,
+        rate_limiter: Optional[RateLimiter] = None
+    ) -> None:
         """Initialize the tool router.
 
         Args:
@@ -30,6 +35,8 @@ class ToolRouter:
                          1. OpenRouterProvider (if OPENROUTER_API_KEY is set)
                          2. KilocodeProvider (if KILOCODE_API_KEY is set)
                          If no keys are set, SqlTool will only support raw SQL.
+            rate_limiter: Optional rate limiter for request throttling (Week 4 Commit 24)
+                         If None, creates default limiter (100 requests per minute)
         """
         # If no provider specified, try to auto-detect from environment
         if llm_provider is None:
@@ -52,6 +59,12 @@ class ToolRouter:
             "rest": RestTool(),
         }
 
+        # Week 4 Commit 24: Rate limiting for abuse prevention
+        self._rate_limiter = rate_limiter or RateLimiter(
+            max_requests=100,
+            window_seconds=60
+        )
+
     def route(self, query: str) -> Tuple[ToolName, float]:
         # Week 1 deterministic heuristic router (LLM comes Week 2)
         q = query.lower()
@@ -63,16 +76,46 @@ class ToolRouter:
             return "rest", 0.70
         return "unknown", 0.30
 
-    def handle(self, query: str, correlation_id: str | None = None) -> Routed:
+    def handle(
+        self,
+        query: str,
+        correlation_id: str | None = None,
+        user_id: str | None = None
+    ) -> Routed:
         """Route and execute a query with the appropriate tool.
 
         Args:
             query: The user query to route and execute
             correlation_id: Optional correlation ID for tracing. Auto-generates UUID if not provided.
+            user_id: Optional user/IP identifier for rate limiting (Week 4 Commit 24)
 
         Returns:
             Routed object with tool name, confidence, result, and elapsed time
         """
+        # Week 4 Commit 24: Check rate limit first
+        if user_id and self._rate_limiter.is_enabled:
+            try:
+                self._rate_limiter.check_limit(user_id)
+                # Record successful request
+                self._rate_limiter.record_request(user_id)
+            except RateLimitError as e:
+                # Return structured error response
+                error_data = {
+                    "error": "Rate limit exceeded",
+                    "message": str(e),
+                    "limit": e.limit,
+                    "window_seconds": e.window,
+                    "retry_after_seconds": e.retry_after,
+                    "identifier": e.identifier
+                }
+                res = ToolResult(data=error_data, notes="rate_limit_exceeded")
+                return Routed(
+                    tool="unknown",
+                    confidence=0.0,
+                    result=res,
+                    elapsed_ms=0.0
+                )
+
         # Generate correlation ID if not provided
         if correlation_id is None:
             correlation_id = str(uuid.uuid4())

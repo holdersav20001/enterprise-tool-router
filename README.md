@@ -826,6 +826,36 @@ print(f"Hit rate: {stats.hit_rate:.1%}")  # e.g., "Hit rate: 75.0%"
 - Graceful degradation (NoOpCache if Redis unavailable)
 - Metrics for monitoring cache effectiveness
 
+### Rate Limiting for Abuse Prevention
+Week 4 Commit 24 adds per-user/IP rate limiting with sliding window algorithm:
+
+```python
+from enterprise_tool_router.router import ToolRouter
+from enterprise_tool_router.rate_limiter import RateLimiter
+
+# Configure rate limiting
+limiter = RateLimiter(
+    max_requests=100,      # 100 requests
+    window_seconds=60      # per minute
+)
+
+router = ToolRouter(rate_limiter=limiter)
+
+# Include user_id or IP in requests
+result = router.handle("show revenue", user_id="192.168.1.1")
+
+# Check stats
+stats = limiter.get_stats()
+print(f"Rejection rate: {stats.rejection_rate:.1%}")
+```
+
+**Features:**
+- Sliding window algorithm (accurate rate limiting)
+- Per-user/IP tracking (isolated limits)
+- Structured error responses with retry-after
+- Configurable limits and windows
+- Stats tracking (allowed, rejected, rejection rate)
+
 **See [OpenRouter Setup Guide](docs/openrouter_setup.md) for detailed configuration**
 
 ---
@@ -883,7 +913,13 @@ print(f"Hit rate: {stats.hit_rate:.1%}")  # e.g., "Hit rate: 75.0%"
   - Metrics tracking (hit rate, misses, sets)
   - Graceful fallback (NoOpCache if Redis unavailable)
   - **149 tests passing** (15 new cache tests)
-- ⏳ Commit 24: Rate Limiting
+- **✅ Commit 24: Rate Limiting**
+  - Sliding window rate limiter (per-user/IP)
+  - Configurable limits (default: 100 req/min)
+  - Structured error responses with retry-after
+  - Stats tracking (rejection rate, allowed/rejected)
+  - Integration with ToolRouter
+  - **166 tests passing** (17 new rate limit tests)
 - ⏳ Commit 25: Structured Error Taxonomy
 - ⏳ Commit 26: Token + Cost Metrics
 - ⏳ Commit 27: Shadow Evaluation Mode
