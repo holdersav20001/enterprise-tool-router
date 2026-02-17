@@ -25,6 +25,7 @@ from pydantic import ValidationError
 
 from .llm.base import LLMProvider, StructuredOutputError, LLMTimeoutError
 from .schemas_sql_planner import SqlPlanSchema, SqlPlanErrorSchema
+from .circuit_breaker import CircuitBreaker
 
 
 # Database schema description for the LLM
@@ -86,13 +87,25 @@ class SqlPlanner:
         >>> assert "LIMIT" in result.sql
     """
 
-    def __init__(self, llm_provider: LLMProvider):
+    def __init__(
+        self,
+        llm_provider: LLMProvider,
+        circuit_breaker: Optional[CircuitBreaker] = None
+    ):
         """Initialize SQL planner with an LLM provider.
 
         Args:
             llm_provider: LLM provider to use for SQL generation
+            circuit_breaker: Optional circuit breaker for fault tolerance (Week 4 Commit 22)
+                            If None, creates default breaker (5 failures in 60s)
         """
         self._llm = llm_provider
+        # Week 4 Commit 22: Circuit breaker for fault tolerance
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            failure_threshold=5,
+            timeout_seconds=60.0,
+            recovery_timeout=30.0
+        )
 
     def plan(
         self,
@@ -116,6 +129,17 @@ class SqlPlanner:
             ...     print(f"SQL: {result.sql}")
             ...     print(f"Confidence: {result.confidence}")
         """
+        # Week 4 Commit 22: Check circuit breaker before calling LLM
+        if not self._circuit_breaker.can_execute():
+            stats = self._circuit_breaker.get_stats()
+            return SqlPlanErrorSchema(
+                error=(
+                    f"LLM service temporarily unavailable (circuit breaker {stats.state.value}). "
+                    f"Multiple failures detected. Please try again in a moment or use raw SQL."
+                ),
+                confidence=0.0
+            )
+
         try:
             # Build the prompt
             prompt = self._build_prompt(natural_language_query)
@@ -128,11 +152,16 @@ class SqlPlanner:
                 timeout=timeout
             )
 
+            # Week 4 Commit 22: Record success with circuit breaker
+            self._circuit_breaker.record_success()
+
             # plan is already validated by the LLM provider
             # and by SqlPlanSchema's field validators
             return plan
 
         except LLMTimeoutError as e:
+            # Week 4 Commit 22: Timeout is a failure - record it
+            self._circuit_breaker.record_failure()
             # Week 4 Commit 21: Graceful handling of timeout
             # System does not hang - returns safe error instead
             return SqlPlanErrorSchema(
@@ -140,12 +169,16 @@ class SqlPlanner:
                 confidence=0.0
             )
         except (StructuredOutputError, ValidationError) as e:
+            # Week 4 Commit 22: Validation failures are LLM failures
+            self._circuit_breaker.record_failure()
             # LLM output didn't match schema or validation failed
             return SqlPlanErrorSchema(
                 error=f"Failed to generate valid SQL: {str(e)}",
                 confidence=0.0
             )
         except Exception as e:
+            # Week 4 Commit 22: All other errors are failures
+            self._circuit_breaker.record_failure()
             # Other errors (API failures, etc.)
             return SqlPlanErrorSchema(
                 error=f"SQL generation error: {str(e)}",

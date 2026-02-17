@@ -747,6 +747,42 @@ result = planner.plan("Show revenue by region", timeout=10.0)
 - Preserves deterministic validator authority
 - Full test coverage with MockProvider
 
+### Circuit Breaker for LLM Fault Tolerance
+Week 4 Commit 22 adds circuit breaker pattern to prevent cascading failures:
+
+```python
+from enterprise_tool_router.sql_planner import SqlPlanner
+from enterprise_tool_router.circuit_breaker import CircuitBreaker
+from enterprise_tool_router.llm.providers import OpenRouterProvider
+
+# Custom circuit breaker configuration
+breaker = CircuitBreaker(
+    failure_threshold=5,      # Open circuit after 5 failures
+    timeout_seconds=60.0,     # Within 60 second window
+    recovery_timeout=30.0     # Wait 30s before testing recovery
+)
+
+planner = SqlPlanner(
+    llm_provider=OpenRouterProvider(),
+    circuit_breaker=breaker
+)
+
+# Circuit breaker handles failures automatically
+result = planner.plan("complex query")
+# If LLM fails repeatedly, circuit opens and returns graceful error
+```
+
+**Circuit Breaker States:**
+- **CLOSED**: Normal operation, requests pass through
+- **OPEN**: Circuit tripped (5 failures in 60s), fail fast without calling LLM
+- **HALF_OPEN**: Testing recovery after 30s, limited requests allowed
+
+**Benefits:**
+- Prevents cascading failures from unreliable LLM providers
+- System continues operating when circuit is open (graceful errors)
+- Automatic recovery testing (half-open → closed)
+- Sliding time window for failure tracking
+
 **See [OpenRouter Setup Guide](docs/openrouter_setup.md) for detailed configuration**
 
 ---
@@ -790,7 +826,12 @@ result = planner.plan("Show revenue by region", timeout=10.0)
   - Graceful fallback on timeout (no hanging)
   - LLMTimeoutError exception with actionable messages
   - **114 tests passing** (10 new timeout tests)
-- ⏳ Commit 22: Circuit Breaker (LLM)
+- **✅ Commit 22: Circuit Breaker (LLM)**
+  - Circuit breaker pattern (closed/open/half-open states)
+  - Failure tracking with sliding time window (5 failures in 60s)
+  - Automatic fail-fast when circuit is open
+  - Self-healing recovery testing (half-open state)
+  - **134 tests passing** (20 new circuit breaker tests)
 - ⏳ Commit 23: Redis Caching Layer
 - ⏳ Commit 24: Rate Limiting
 - ⏳ Commit 25: Structured Error Taxonomy
