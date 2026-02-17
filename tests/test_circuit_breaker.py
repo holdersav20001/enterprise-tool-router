@@ -220,7 +220,7 @@ class TestCircuitBreakerRecovery:
 class TestCircuitBreakerIntegration:
     """Test circuit breaker integration with SqlPlanner."""
 
-    def test_planner_with_circuit_breaker(self):
+    def test_planner_with_circuit_breaker(self, clean_query_history):
         """Test that SqlPlanner uses circuit breaker."""
         provider = MockProvider(
             response_data={
@@ -233,61 +233,61 @@ class TestCircuitBreakerIntegration:
         planner = SqlPlanner(provider, circuit_breaker=breaker)
 
         # Should work normally
-        result = planner.plan("test query")
+        result = planner.plan("test query", bypass_cache=True)
         assert isinstance(result, SqlPlanSchema)
 
         # Success should be recorded
         stats = breaker.get_stats()
         assert stats.success_count == 1
 
-    def test_planner_records_failures(self):
+    def test_planner_records_failures(self, clean_query_history):
         """Test that planner records failures in circuit breaker."""
         provider = MockProvider(should_fail=True)
         breaker = CircuitBreaker(failure_threshold=3)
         planner = SqlPlanner(provider, circuit_breaker=breaker)
 
         # First failure
-        result = planner.plan("test")
+        result = planner.plan("test", bypass_cache=True)
         assert isinstance(result, SqlPlanErrorSchema)
         assert breaker.is_closed
 
         # Second failure
-        result = planner.plan("test")
+        result = planner.plan("test", bypass_cache=True)
         assert isinstance(result, SqlPlanErrorSchema)
         assert breaker.is_closed
 
         # Third failure should open circuit
-        result = planner.plan("test")
+        result = planner.plan("test", bypass_cache=True)
         assert breaker.is_open
 
-    def test_planner_fails_fast_when_circuit_open(self):
+    def test_planner_fails_fast_when_circuit_open(self, clean_query_history):
         """Test that planner returns error immediately when circuit is open."""
         provider = MockProvider(should_fail=True)
         breaker = CircuitBreaker(failure_threshold=2)
         planner = SqlPlanner(provider, circuit_breaker=breaker)
 
         # Open the circuit
-        planner.plan("test")
-        planner.plan("test")
+        planner.plan("test", bypass_cache=True)
+        planner.plan("test", bypass_cache=True)
         assert breaker.is_open
 
         # Next call should fail fast without calling provider
-        result = planner.plan("test")
+        result = planner.plan("test", bypass_cache=True)
         assert isinstance(result, SqlPlanErrorSchema)
         assert "circuit breaker" in result.error.lower()
         assert "temporarily unavailable" in result.error.lower()
 
-    def test_planner_timeout_counted_as_failure(self):
+    def test_planner_timeout_counted_as_failure(self, clean_query_history):
         """Test that timeout errors trigger circuit breaker."""
         provider = MockProvider(should_timeout=True)
         breaker = CircuitBreaker(failure_threshold=2)
         planner = SqlPlanner(provider, circuit_breaker=breaker)
 
         # Timeouts should count as failures
-        planner.plan("test", timeout=5.0)
+        planner.plan("test", timeout=5.0, bypass_cache=True)
         assert breaker.is_closed
 
-        planner.plan("test", timeout=5.0)
+        planner.plan("test", timeout=5.0, bypass_cache=True)
         assert breaker.is_open  # Circuit should open
 
     def test_planner_creates_default_breaker_if_none(self):
@@ -306,7 +306,7 @@ class TestCircuitBreakerIntegration:
         result = planner.plan("test")
         assert isinstance(result, SqlPlanSchema)
 
-    def test_system_continues_operating_when_circuit_open(self):
+    def test_system_continues_operating_when_circuit_open(self, clean_query_history):
         """
         Acceptance Criteria: System continues operating safely when circuit is open.
 
@@ -318,18 +318,18 @@ class TestCircuitBreakerIntegration:
         planner = SqlPlanner(provider, circuit_breaker=breaker)
 
         # Open the circuit by failing
-        planner.plan("test")
-        planner.plan("test")
+        planner.plan("test", bypass_cache=True)
+        planner.plan("test", bypass_cache=True)
         assert breaker.is_open
 
         # System should still handle requests gracefully
         for _ in range(10):
-            result = planner.plan("test")
+            result = planner.plan("test", bypass_cache=True)
             assert isinstance(result, SqlPlanErrorSchema)
             assert "temporarily unavailable" in result.error.lower()
             # No exceptions raised - system continues operating
 
-    def test_circuit_recovery_workflow(self):
+    def test_circuit_recovery_workflow(self, clean_query_history):
         """Test complete recovery workflow: closed -> open -> half-open -> closed."""
         provider_failing = MockProvider(should_fail=True)
         provider_working = MockProvider(
@@ -349,8 +349,8 @@ class TestCircuitBreakerIntegration:
         planner = SqlPlanner(provider_failing, circuit_breaker=breaker)
 
         # Closed -> Open
-        planner.plan("test")
-        planner.plan("test")
+        planner.plan("test", bypass_cache=True)
+        planner.plan("test", bypass_cache=True)
         assert breaker.is_open
 
         # Wait for half-open
@@ -361,10 +361,10 @@ class TestCircuitBreakerIntegration:
         planner._llm = provider_working
 
         # Half-open -> Closed
-        result = planner.plan("test")
+        result = planner.plan("test", bypass_cache=True)
         assert isinstance(result, SqlPlanSchema)
         assert breaker.is_closed
 
         # Circuit is now healthy again
-        result = planner.plan("test")
+        result = planner.plan("test", bypass_cache=True)
         assert isinstance(result, SqlPlanSchema)

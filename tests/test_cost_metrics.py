@@ -50,7 +50,7 @@ class TestTokenTracking:
 
     # Note: Cache behavior is tested in test_cache.py (Commit 23)
 
-    def test_sql_tool_returns_token_usage(self):
+    def test_sql_tool_returns_token_usage(self, clean_query_history):
         """Test that SqlTool includes token usage in ToolResult."""
         provider = MockProvider(
             response_data={
@@ -63,7 +63,7 @@ class TestTokenTracking:
         )
         tool = SqlTool(llm_provider=provider)
 
-        result = tool.run("show me sales data")
+        result = tool.run("show me sales data", bypass_cache=True)
 
         # ToolResult should include token usage
         assert isinstance(result, ToolResult)

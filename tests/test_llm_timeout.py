@@ -50,14 +50,14 @@ class TestLLMTimeout:
 
         assert "15.0s" in str(exc_info.value)
 
-    def test_sql_planner_handles_timeout_gracefully(self):
+    def test_sql_planner_handles_timeout_gracefully(self, clean_query_history):
         """Test that SqlPlanner returns safe error on timeout."""
         # Arrange: Create planner with timeout-prone provider
         provider = MockProvider(should_timeout=True)
         planner = SqlPlanner(provider)
 
         # Act: Plan should not raise exception, should return error schema
-        result = planner.plan("Show me revenue by region", timeout=10.0)
+        result = planner.plan("Show me revenue by region", timeout=10.0, bypass_cache=True)
 
         # Assert: Returns SqlPlanErrorSchema, not exception
         assert isinstance(result, SqlPlanErrorSchema)
@@ -105,7 +105,7 @@ class TestLLMTimeout:
         assert result.confidence == 0.95
         assert "SELECT" in result.sql
 
-    def test_timeout_does_not_hang_system(self):
+    def test_timeout_does_not_hang_system(self, clean_query_history):
         """Test that timeout actually prevents hanging (finishes quickly)."""
         import time
 
@@ -115,7 +115,7 @@ class TestLLMTimeout:
 
         # Act: Measure execution time
         start = time.time()
-        result = planner.plan("test query", timeout=1.0)
+        result = planner.plan("test query", timeout=1.0, bypass_cache=True)
         elapsed = time.time() - start
 
         # Assert: Should finish almost immediately (mock doesn't actually wait)
@@ -145,7 +145,7 @@ class TestLLMTimeout:
         result3 = planner.plan("test", timeout=0.5)
         assert isinstance(result3, SqlPlanSchema)
 
-    def test_timeout_error_classification(self):
+    def test_timeout_error_classification(self, clean_query_history):
         """Test that timeout errors are distinct from other errors."""
         # Arrange
         timeout_provider = MockProvider(should_timeout=True)
@@ -155,8 +155,8 @@ class TestLLMTimeout:
         failure_planner = SqlPlanner(failure_provider)
 
         # Act
-        timeout_result = timeout_planner.plan("test", timeout=5.0)
-        failure_result = failure_planner.plan("test")
+        timeout_result = timeout_planner.plan("test", timeout=5.0, bypass_cache=True)
+        failure_result = failure_planner.plan("test", bypass_cache=True)
 
         # Assert: Both return errors, but with different messages
         assert isinstance(timeout_result, SqlPlanErrorSchema)

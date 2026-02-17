@@ -56,7 +56,7 @@ def test_sql_planner_with_limit_clause():
     assert "LIMIT" in result.sql.upper()
 
 
-def test_sql_planner_rejects_missing_limit():
+def test_sql_planner_rejects_missing_limit(clean_query_history):
     """Test that SQL without LIMIT is rejected by schema validation."""
     # MockProvider will try to validate this, and it should fail
     provider = MockProvider(
@@ -68,7 +68,7 @@ def test_sql_planner_rejects_missing_limit():
     )
     planner = SqlPlanner(provider)
 
-    result = planner.plan("Show me sales")
+    result = planner.plan("Show me sales", bypass_cache=True)
 
     # Should return error schema because validation failed
     assert isinstance(result, SqlPlanErrorSchema)
@@ -93,7 +93,7 @@ def test_sql_planner_confidence_score():
     assert 0.0 <= result.confidence <= 1.0
 
 
-def test_sql_planner_invalid_confidence_score():
+def test_sql_planner_invalid_confidence_score(clean_query_history):
     """Test that invalid confidence scores are rejected."""
     provider = MockProvider(
         response_data={
@@ -104,14 +104,14 @@ def test_sql_planner_invalid_confidence_score():
     )
     planner = SqlPlanner(provider)
 
-    result = planner.plan("Show sales")
+    result = planner.plan("Show sales", bypass_cache=True)
 
     # Should return error because confidence validation failed
     assert isinstance(result, SqlPlanErrorSchema)
     assert result.confidence == 0.0
 
 
-def test_sql_planner_missing_required_field():
+def test_sql_planner_missing_required_field(clean_query_history):
     """Test that missing required fields are rejected."""
     # Missing 'explanation' field
     provider = MockProvider(
@@ -123,7 +123,7 @@ def test_sql_planner_missing_required_field():
     )
     planner = SqlPlanner(provider)
 
-    result = planner.plan("Show sales")
+    result = planner.plan("Show sales", bypass_cache=True)
 
     assert isinstance(result, SqlPlanErrorSchema)
     assert "validation" in result.error.lower() or "failed" in result.error.lower()
@@ -145,7 +145,7 @@ def test_sql_planner_empty_sql():
     assert isinstance(result, SqlPlanErrorSchema)
 
 
-def test_sql_planner_empty_explanation():
+def test_sql_planner_empty_explanation(clean_query_history):
     """Test that empty explanation is rejected."""
     provider = MockProvider(
         response_data={
@@ -156,7 +156,7 @@ def test_sql_planner_empty_explanation():
     )
     planner = SqlPlanner(provider)
 
-    result = planner.plan("Show sales")
+    result = planner.plan("Show sales", bypass_cache=True)
 
     assert isinstance(result, SqlPlanErrorSchema)
 

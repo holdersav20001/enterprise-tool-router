@@ -147,13 +147,13 @@ def test_natural_language_without_llm_fails():
     assert "LLM provider" in result.data["error"] or "natural language" in result.data["error"].lower()
 
 
-def test_planner_error_handled():
+def test_planner_error_handled(clean_query_history):
     """Test that planner errors are handled gracefully."""
     # Mock provider configured to fail
     provider = MockProvider(should_fail=True)
     tool = SqlTool(llm_provider=provider)
 
-    result = tool.run("Show me sales data")
+    result = tool.run("Show me sales data", bypass_cache=True)
 
     # Should return error schema
     assert "error" in result.data

@@ -103,12 +103,12 @@ def test_custom_confidence_threshold():
 
     # Default threshold (0.7) - should block
     tool_default = SqlTool(llm_provider=provider)
-    result_default = tool_default.run("Show sales")
+    result_default = tool_default.run("Show sales", bypass_cache=True)
     assert result_default.notes == "low_confidence"
 
     # Custom threshold (0.5) - should execute
     tool_custom = SqlTool(llm_provider=provider, confidence_threshold=0.5)
-    result_custom = tool_custom.run("Show sales")
+    result_custom = tool_custom.run("Show sales", bypass_cache=True)
     assert result_custom.notes != "low_confidence"
 
 
@@ -175,7 +175,7 @@ def test_confidence_threshold_one_blocks_all():
         }
     )
     tool = SqlTool(llm_provider=provider_high, confidence_threshold=1.0)
-    result = tool.run("Show sales")
+    result = tool.run("Show sales", bypass_cache=True)
     assert result.notes == "low_confidence"
 
     # Confidence 1.0 (perfect)
@@ -187,7 +187,7 @@ def test_confidence_threshold_one_blocks_all():
         }
     )
     tool_perfect = SqlTool(llm_provider=provider_perfect, confidence_threshold=1.0)
-    result_perfect = tool_perfect.run("Show sales")
+    result_perfect = tool_perfect.run("Show sales", bypass_cache=True)
     assert result_perfect.notes != "low_confidence"
 
 

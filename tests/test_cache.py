@@ -118,7 +118,7 @@ class TestCacheBasics:
 class TestCacheIntegration:
     """Test cache integration with SqlPlanner."""
 
-    def test_planner_cache_hit_avoids_llm_call(self):
+    def test_planner_cache_hit_avoids_llm_call(self, clean_query_history):
         """
         Test that cache hit avoids calling the LLM.
 
@@ -156,9 +156,10 @@ class TestCacheIntegration:
             cache._stats.misses += 1
             return None
 
-        def mock_set(query, data):
+        def mock_set(query, data, bypass=False):
             nonlocal cached_data
-            cached_data = data
+            if not bypass:
+                cached_data = data
             cache._stats.sets += 1
             return True
 
@@ -197,8 +198,9 @@ class TestCacheIntegration:
         cache = NoOpCache()
         cache_sets = []
 
-        def mock_set(query, data):
-            cache_sets.append((query, data))
+        def mock_set(query, data, bypass=False):
+            if not bypass:
+                cache_sets.append((query, data))
             return True
 
         cache.set = mock_set
@@ -212,7 +214,7 @@ class TestCacheIntegration:
         # Error should NOT be cached
         assert len(cache_sets) == 0
 
-    def test_planner_caches_only_after_success(self):
+    def test_planner_caches_only_after_success(self, clean_query_history):
         """
         Test that cache is only populated after successful LLM response.
         """
@@ -230,9 +232,10 @@ class TestCacheIntegration:
         def mock_get(query):
             return cache_data.get(query)
 
-        def mock_set(query, data):
-            cache_data[query] = data
-            cache._stats.sets += 1
+        def mock_set(query, data, bypass=False):
+            if not bypass:
+                cache_data[query] = data
+                cache._stats.sets += 1
             return True
 
         cache.get = mock_get
@@ -255,7 +258,7 @@ class TestCacheIntegration:
         assert "confidence" in cached
         assert "explanation" in cached
 
-    def test_planner_different_queries_different_cache_keys(self):
+    def test_planner_different_queries_different_cache_keys(self, clean_query_history):
         """Test that different queries use different cache keys."""
         provider = MockProvider(
             response_data={
@@ -269,7 +272,7 @@ class TestCacheIntegration:
         cache_data = {}
 
         cache.get = lambda q: cache_data.get(q)
-        cache.set = lambda q, d: cache_data.update({q: d}) or True
+        cache.set = lambda q, d, bypass=False: (cache_data.update({q: d}) or True) if not bypass else True
 
         planner = SqlPlanner(provider, cache_manager=cache)
 
@@ -298,7 +301,7 @@ class TestCacheIntegration:
         # Should have created a cache (may or may not be enabled depending on Redis)
         assert planner._cache is not None
 
-    def test_cache_corrupted_data_fallback(self):
+    def test_cache_corrupted_data_fallback(self, clean_query_history):
         """Test that corrupted cache data falls back to LLM call."""
         provider = MockProvider(
             response_data={
@@ -327,7 +330,7 @@ class TestCacheIntegration:
         stats = cache.get_stats()
         assert stats.hits == 1
 
-    def test_cache_with_circuit_breaker(self):
+    def test_cache_with_circuit_breaker(self, clean_query_history):
         """Test that cache works alongside circuit breaker."""
         provider = MockProvider(
             response_data={
@@ -347,9 +350,10 @@ class TestCacheIntegration:
             cache._stats.misses += 1
             return None
 
-        def mock_set(query, data):
+        def mock_set(query, data, bypass=False):
             nonlocal cached_response
-            cached_response = data
+            if not bypass:
+                cached_response = data
             return True
 
         cache.get = mock_get
@@ -399,7 +403,7 @@ class TestCacheHitRate:
 class TestCachePerformance:
     """Test cache performance benefits."""
 
-    def test_cache_reduces_llm_calls(self):
+    def test_cache_reduces_llm_calls(self, clean_query_history):
         """
         Acceptance Criteria: Second identical query hits cache.
         No LLM call on cached hit.
@@ -428,7 +432,7 @@ class TestCachePerformance:
         cache_storage = {}
 
         cache.get = lambda q: cache_storage.get(q)
-        cache.set = lambda q, d: cache_storage.update({q: d}) or True
+        cache.set = lambda q, d, bypass=False: (cache_storage.update({q: d}) or True) if not bypass else True
 
         planner = SqlPlanner(provider, cache_manager=cache)
 

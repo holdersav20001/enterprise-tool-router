@@ -302,6 +302,6 @@ class NoOpCache(CacheManager):
         self._stats.misses += 1
         return None
 
-    def set(self, query: str, response: dict) -> bool:
+    def set(self, query: str, response: dict, bypass: bool = False) -> bool:
         """Do nothing."""
         return False
