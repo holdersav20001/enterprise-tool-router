@@ -826,6 +826,57 @@ print(f"Hit rate: {stats.hit_rate:.1%}")  # e.g., "Hit rate: 75.0%"
 - Graceful degradation (NoOpCache if Redis unavailable)
 - Metrics for monitoring cache effectiveness
 
+### Structured Error Taxonomy
+Week 4 Commit 25 adds a comprehensive error classification system with predictable JSON schemas:
+
+```python
+from enterprise_tool_router.errors import (
+    PlannerError,
+    ValidationError,
+    ExecutionError,
+    TimeoutError,
+    RateLimitError,
+    CircuitBreakerError,
+    CacheError,
+    ConfigurationError
+)
+
+try:
+    result = router.handle("complex query", user_id="user123")
+except PlannerError as e:
+    # All errors have consistent to_dict() method
+    error_data = e.to_dict()
+    print(error_data["error_type"])      # "PlannerError"
+    print(error_data["category"])        # "planning"
+    print(error_data["severity"])        # "error"
+    print(error_data["retryable"])       # True
+    print(error_data["details"])         # {...}
+    print(error_data["timestamp"])       # ISO 8601 format
+```
+
+**Error Categories:**
+- `PLANNING` - LLM generation failures
+- `VALIDATION` - Schema/input validation failures
+- `EXECUTION` - Tool execution errors (SQL, REST, etc.)
+- `TIMEOUT` - Operation exceeded timeout
+- `RATE_LIMIT` - Rate limit exceeded
+- `CIRCUIT_BREAKER` - Circuit breaker open
+- `CACHE` - Cache operation failures
+- `CONFIGURATION` - Configuration errors
+
+**Error Severities:**
+- `INFO` - Informational (cache miss)
+- `WARNING` - Warning (timeout, rate limit)
+- `ERROR` - Error (validation failed)
+- `CRITICAL` - Critical (system failure)
+
+**Benefits:**
+- Consistent error schema across all components
+- Machine-parseable error classification
+- Retryability indicators for client logic
+- Structured details for debugging
+- Backward compatible with existing error handling
+
 ### Rate Limiting for Abuse Prevention
 Week 4 Commit 24 adds per-user/IP rate limiting with sliding window algorithm:
 
@@ -920,7 +971,14 @@ print(f"Rejection rate: {stats.rejection_rate:.1%}")
   - Stats tracking (rejection rate, allowed/rejected)
   - Integration with ToolRouter
   - **166 tests passing** (17 new rate limit tests)
-- ⏳ Commit 25: Structured Error Taxonomy
+- **✅ Commit 25: Structured Error Taxonomy**
+  - Hierarchical error classification system
+  - 8 error categories (planning, validation, execution, etc.)
+  - 4 severity levels (info, warning, error, critical)
+  - Retryability indicators for all errors
+  - Consistent to_dict() serialization (7-key schema)
+  - Backward compatible with existing errors
+  - **193 tests passing** (27 new error taxonomy tests)
 - ⏳ Commit 26: Token + Cost Metrics
 - ⏳ Commit 27: Shadow Evaluation Mode
 

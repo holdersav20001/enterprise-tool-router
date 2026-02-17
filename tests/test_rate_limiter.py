@@ -163,11 +163,15 @@ class TestRateLimiterIntegration:
         # 3rd request should be rate limited
         result3 = router.handle("SELECT * FROM sales_fact", user_id="user1")
         assert result3.result.notes == "rate_limit_exceeded"
-        assert "Rate limit exceeded" in result3.result.data["error"]
+        # Week 4 Commit 25: Now returns structured error
+        assert result3.result.data["error_type"] == "RateLimitError"
+        assert "Rate limit exceeded" in result3.result.data["message"]
 
     def test_router_structured_error_response(self):
         """
         Acceptance Criteria: Returns structured error when rate limited.
+
+        Week 4 Commit 25: Now returns structured error with to_dict() schema.
         """
         limiter = RateLimiter(max_requests=1, window_seconds=60)
         router = ToolRouter(rate_limiter=limiter)
@@ -180,17 +184,19 @@ class TestRateLimiterIntegration:
         assert result.result.notes == "rate_limit_exceeded"
         error_data = result.result.data
 
-        # Check all required fields
-        assert "error" in error_data
+        # Week 4 Commit 25: Check structured error taxonomy schema
+        assert error_data["error_type"] == "RateLimitError"
+        assert error_data["category"] == "rate_limit"
+        assert error_data["severity"] == "warning"
+        assert error_data["retryable"] is True
         assert "message" in error_data
-        assert "limit" in error_data
-        assert "window_seconds" in error_data
-        assert "retry_after_seconds" in error_data
-        assert "identifier" in error_data
+        assert "timestamp" in error_data
 
-        assert error_data["limit"] == 1
-        assert error_data["window_seconds"] == 60
-        assert error_data["identifier"] == "user1"
+        # Details should contain rate limit info
+        assert error_data["details"]["limit"] == 1
+        assert error_data["details"]["window_seconds"] == 60
+        assert error_data["details"]["identifier"] == "user1"
+        assert "retry_after_seconds" in error_data["details"]
 
     def test_router_without_user_id_no_rate_limiting(self):
         """Test that router doesn't rate limit if user_id not provided."""

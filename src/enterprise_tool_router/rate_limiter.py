@@ -1,6 +1,7 @@
 """Rate limiter for preventing abuse.
 
 Week 4 Commit 24: Rate Limiting
+Week 4 Commit 25: Structured error taxonomy integration
 
 Implements per-IP or per-user rate limiting using a sliding window algorithm.
 Prevents excessive requests and protects the system from abuse.
@@ -28,6 +29,9 @@ from dataclasses import dataclass
 from collections import deque, defaultdict
 from threading import Lock
 
+# Week 4 Commit 25: Import structured error taxonomy
+from .errors import RateLimitError as StructuredRateLimitError
+
 try:
     import redis
     from redis.exceptions import RedisError
@@ -37,10 +41,11 @@ except ImportError:
     RedisError = Exception  # type: ignore
 
 
-class RateLimitError(Exception):
+class RateLimitError(StructuredRateLimitError):
     """Raised when rate limit is exceeded.
 
     Week 4 Commit 24: Rate limiting protection.
+    Week 4 Commit 25: Now inherits from StructuredRateLimitError.
     """
 
     def __init__(self, identifier: str, limit: int, window: int, retry_after: float):
@@ -52,15 +57,27 @@ class RateLimitError(Exception):
             window: Time window in seconds
             retry_after: Seconds until retry is allowed
         """
-        self.identifier = identifier
-        self.limit = limit
-        self.window = window
-        self.retry_after = retry_after
-        super().__init__(
+        message = (
             f"Rate limit exceeded for {identifier}: "
             f"{limit} requests per {window}s. "
             f"Retry after {retry_after:.1f}s"
         )
+        details = {
+            "identifier": identifier,
+            "limit": limit,
+            "window_seconds": window,
+            "retry_after_seconds": retry_after
+        }
+        super().__init__(
+            message=message,
+            retryable=True,
+            details=details
+        )
+        # Keep attributes for backward compatibility
+        self.identifier = identifier
+        self.limit = limit
+        self.window = window
+        self.retry_after = retry_after
 
 
 @dataclass

@@ -4,11 +4,15 @@ This module defines the interface for LLM providers that generate structured
 outputs. All providers must implement the LLMProvider protocol.
 
 Week 3 Commit 16: LLM Abstraction Layer
+Week 4 Commit 25: Structured error taxonomy integration
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TypeVar, Type
+from typing import TypeVar, Type, Optional, Dict, Any
 from pydantic import BaseModel
+
+# Week 4 Commit 25: Import structured error taxonomy
+from ..errors import PlannerError, TimeoutError as StructuredTimeoutError, ValidationError
 
 
 T = TypeVar('T', bound=BaseModel)
@@ -31,22 +35,57 @@ class LLMUsage:
 
 
 class LLMError(Exception):
-    """Base exception for LLM-related errors."""
+    """Base exception for LLM-related errors.
+
+    Week 4 Commit 25: Base for backward compatibility.
+    New code should use PlannerError from errors module.
+    """
     pass
 
 
-class StructuredOutputError(LLMError):
-    """Raised when LLM output cannot be parsed into the expected schema."""
-    pass
+class StructuredOutputError(PlannerError):
+    """Raised when LLM output cannot be parsed into the expected schema.
+
+    Week 4 Commit 25: Now inherits from PlannerError for structured errors.
+    """
+
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        """Initialize structured output error.
+
+        Args:
+            message: Human-readable error message
+            details: Additional context (output, schema, etc.)
+        """
+        super().__init__(
+            message=message,
+            retryable=True,  # LLM might succeed on retry
+            details=details or {}
+        )
 
 
-class LLMTimeoutError(LLMError):
+class LLMTimeoutError(StructuredTimeoutError):
     """Raised when LLM request exceeds timeout threshold.
 
     Week 4 Commit 21: Timeout protection for LLM calls.
+    Week 4 Commit 25: Now inherits from StructuredTimeoutError.
     This prevents the system from hanging on slow or unresponsive LLM providers.
     """
-    pass
+
+    def __init__(self, message: str, timeout_seconds: Optional[float] = None):
+        """Initialize LLM timeout error.
+
+        Args:
+            message: Human-readable error message
+            timeout_seconds: The timeout that was exceeded
+        """
+        details = {}
+        if timeout_seconds is not None:
+            details["timeout_seconds"] = timeout_seconds
+        super().__init__(
+            message=message,
+            retryable=True,
+            details=details
+        )
 
 
 class LLMProvider(ABC):

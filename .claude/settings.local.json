@@ -20,7 +20,13 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "Bash(git config:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "WebFetch(domain:kilo.ai)",
+      "WebFetch(domain:aiengineerguide.com)",
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(export:*)",
+      "Bash(curl:*)",
+      "Bash(git restore:*)"
     ]
   }
 }

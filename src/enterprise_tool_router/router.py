@@ -93,21 +93,15 @@ class ToolRouter:
             Routed object with tool name, confidence, result, and elapsed time
         """
         # Week 4 Commit 24: Check rate limit first
+        # Week 4 Commit 25: Use structured error taxonomy
         if user_id and self._rate_limiter.is_enabled:
             try:
                 self._rate_limiter.check_limit(user_id)
                 # Record successful request
                 self._rate_limiter.record_request(user_id)
             except RateLimitError as e:
-                # Return structured error response
-                error_data = {
-                    "error": "Rate limit exceeded",
-                    "message": str(e),
-                    "limit": e.limit,
-                    "window_seconds": e.window,
-                    "retry_after_seconds": e.retry_after,
-                    "identifier": e.identifier
-                }
+                # Week 4 Commit 25: Return structured error using to_dict()
+                error_data = e.to_dict()
                 res = ToolResult(data=error_data, notes="rate_limit_exceeded")
                 return Routed(
                     tool="unknown",
