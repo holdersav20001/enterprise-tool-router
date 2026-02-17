@@ -5,6 +5,9 @@ from typing import Protocol, Any
 class ToolResult:
     data: Any
     notes: str = ""
+    tokens_input: int = 0  # Week 4 Commit 26: Token tracking
+    tokens_output: int = 0  # Week 4 Commit 26: Token tracking
+    cost_usd: float = 0.0  # Week 4 Commit 26: Cost tracking
 
 class Tool(Protocol):
     name: str

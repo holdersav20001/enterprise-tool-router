@@ -15,6 +15,10 @@ router = ToolRouter()
 
 REQS = Counter("router_requests_total", "Total requests", ["tool"])
 LAT = Histogram("router_request_duration_ms", "Request duration in ms")
+# Week 4 Commit 26: Token and cost metrics
+TOKENS_IN = Counter("router_tokens_input_total", "Total input tokens consumed")
+TOKENS_OUT = Counter("router_tokens_output_total", "Total output tokens generated")
+COST = Counter("router_cost_usd_total", "Total estimated cost in USD")
 
 @app.get("/health")
 def health():
@@ -39,27 +43,41 @@ def query(req: QueryRequest, request: Request):
         user_id=user_id
     ) as audit_ctx:
         # Route and execute the query with correlation ID propagation
-        routed = router.handle(req.query, correlation_id=correlation_id)
+        routed = router.handle(req.query, correlation_id=correlation_id, user_id=user_id)
         REQS.labels(tool=routed.tool).inc()
         LAT.observe(routed.elapsed_ms)
+        # Week 4 Commit 26: Track token usage and cost
+        if routed.tokens_input > 0:
+            TOKENS_IN.inc(routed.tokens_input)
+        if routed.tokens_output > 0:
+            TOKENS_OUT.inc(routed.tokens_output)
+        if routed.cost_usd > 0:
+            COST.inc(routed.cost_usd)
 
         # Prepare response with correlation_id as trace_id for end-to-end tracing
+        # Week 4 Commit 26: Include actual cost from LLM usage
         response = QueryResponse(
             tool_used=routed.tool,
             confidence=routed.confidence,
             result=routed.result.data,
             trace_id=correlation_id,  # Use correlation_id for distributed tracing
-            cost_usd=0.0,
+            cost_usd=routed.cost_usd,
             notes=routed.result.notes or None,
         )
 
         # Set audit output (marks operation as successful)
-        audit_ctx.set_output({
-            "tool": routed.tool,
-            "confidence": routed.confidence,
-            "notes": routed.result.notes,
-            "row_count": routed.result.data.get("row_count") if isinstance(routed.result.data, dict) else None
-        })
+        # Week 4 Commit 26: Include token usage and cost in audit log
+        audit_ctx.set_output(
+            {
+                "tool": routed.tool,
+                "confidence": routed.confidence,
+                "notes": routed.result.notes,
+                "row_count": routed.result.data.get("row_count") if isinstance(routed.result.data, dict) else None
+            },
+            tokens_input=routed.tokens_input,
+            tokens_output=routed.tokens_output,
+            cost_usd=routed.cost_usd
+        )
 
         return response
 

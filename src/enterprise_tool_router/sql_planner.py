@@ -23,7 +23,7 @@ Safety:
 from typing import Optional
 from pydantic import ValidationError
 
-from .llm.base import LLMProvider, StructuredOutputError, LLMTimeoutError
+from .llm.base import LLMProvider, StructuredOutputError, LLMTimeoutError, LLMUsage
 from .schemas_sql_planner import SqlPlanSchema, SqlPlanErrorSchema
 from .circuit_breaker import CircuitBreaker
 from .cache import CacheManager, NoOpCache
@@ -112,6 +112,8 @@ class SqlPlanner:
         )
         # Week 4 Commit 23: Caching for performance
         self._cache = cache_manager if cache_manager is not None else CacheManager(ttl_seconds=300)
+        # Week 4 Commit 26: Track last LLM usage for cost metrics
+        self._last_usage: Optional['LLMUsage'] = None
 
     def plan(
         self,
@@ -139,6 +141,8 @@ class SqlPlanner:
         cached_response = self._cache.get(natural_language_query)
         if cached_response is not None:
             # Cache hit! Return cached SqlPlanSchema
+            # Week 4 Commit 26: Cache hits have zero token usage
+            self._last_usage = None
             # Reconstruct from dict
             try:
                 return SqlPlanSchema(**cached_response)
@@ -175,6 +179,9 @@ class SqlPlanner:
             # Week 4 Commit 23: Cache successful response
             # Only cache SqlPlanSchema (not errors!)
             self._cache.set(natural_language_query, plan.model_dump())
+
+            # Week 4 Commit 26: Track token usage for cost metrics
+            self._last_usage = usage
 
             # plan is already validated by the LLM provider
             # and by SqlPlanSchema's field validators
@@ -246,3 +253,14 @@ If the query is unclear or cannot be safely translated to SQL, use a low confide
     def model_name(self) -> str:
         """Return the name of the underlying LLM model."""
         return self._llm.model_name
+
+    @property
+    def last_usage(self) -> Optional[LLMUsage]:
+        """Return token usage from last LLM call.
+
+        Week 4 Commit 26: Cost and token tracking.
+
+        Returns:
+            LLMUsage from last plan() call, or None if cache hit or error.
+        """
+        return self._last_usage

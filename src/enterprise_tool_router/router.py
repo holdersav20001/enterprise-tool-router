@@ -20,6 +20,9 @@ class Routed:
     confidence: float
     result: ToolResult
     elapsed_ms: float
+    tokens_input: int = 0  # Week 4 Commit 26: Token tracking
+    tokens_output: int = 0  # Week 4 Commit 26: Token tracking
+    cost_usd: float = 0.0  # Week 4 Commit 26: Cost tracking
 
 class ToolRouter:
     def __init__(
@@ -121,5 +124,14 @@ class ToolRouter:
         else:
             res = self.tools[tool_name].run(query, correlation_id=correlation_id)  # type: ignore[index]
         elapsed = (time.perf_counter() - start) * 1000
-        return Routed(tool=tool_name, confidence=conf, result=res, elapsed_ms=elapsed)
+        # Week 4 Commit 26: Propagate token usage and cost from tool result
+        return Routed(
+            tool=tool_name,
+            confidence=conf,
+            result=res,
+            elapsed_ms=elapsed,
+            tokens_input=res.tokens_input,
+            tokens_output=res.tokens_output,
+            cost_usd=res.cost_usd
+        )
 

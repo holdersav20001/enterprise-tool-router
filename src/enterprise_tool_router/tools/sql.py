@@ -99,6 +99,9 @@ class SqlTool:
             correlation_id = str(uuid.uuid4())
 
         try:
+            # Week 4 Commit 26: Track token usage and cost
+            tokens_input, tokens_output, cost_usd = 0, 0, 0.0
+
             # Detect if this is raw SQL or natural language
             if self._is_raw_sql(query):
                 # Week 2 flow: direct validation and execution
@@ -112,10 +115,22 @@ class SqlTool:
                 # Week 4 Commit 21: Pass timeout to prevent hanging
                 plan = self._planner.plan(query, timeout=self._llm_timeout)
 
+                # Week 4 Commit 26: Capture token usage from planner
+                if self._planner.last_usage:
+                    tokens_input = self._planner.last_usage.input_tokens
+                    tokens_output = self._planner.last_usage.output_tokens
+                    cost_usd = self._planner.last_usage.estimated_cost_usd
+
                 # Check if planner failed
                 if isinstance(plan, SqlPlanErrorSchema):
                     error_schema = SqlErrorSchema(error=f"SQL generation failed: {plan.error}")
-                    return ToolResult(data=error_schema.model_dump(), notes="planner_error")
+                    return ToolResult(
+                        data=error_schema.model_dump(),
+                        notes="planner_error",
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                        cost_usd=cost_usd
+                    )
 
                 # Week 3 Commit 19: Check confidence threshold
                 # If confidence is too low, don't execute - ask for clarification instead
@@ -129,7 +144,10 @@ class SqlTool:
                     )
                     return ToolResult(
                         data=clarification.model_dump(),
-                        notes="low_confidence"
+                        notes="low_confidence",
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                        cost_usd=cost_usd
                     )
 
                 # Planner succeeded - now validate the generated SQL
@@ -150,7 +168,13 @@ class SqlTool:
             result_schema = self._execute(safe_query)
 
             # Return with validated Pydantic schema (converted to dict for ToolResult)
-            return ToolResult(data=result_schema.model_dump())
+            # Week 4 Commit 26: Include token usage and cost
+            return ToolResult(
+                data=result_schema.model_dump(),
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                cost_usd=cost_usd
+            )
 
         except SafetyError as e:
             error_schema = SqlErrorSchema(error=str(e))

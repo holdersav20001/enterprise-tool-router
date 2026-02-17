@@ -31,7 +31,10 @@ def log_audit_record(
     output_data: Any,
     success: bool,
     duration_ms: int,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    tokens_input: int = 0,
+    tokens_output: int = 0,
+    cost_usd: float = 0.0
 ) -> None:
     """Write an audit record to the audit_log table (append-only).
 
@@ -44,6 +47,9 @@ def log_audit_record(
         success: Whether the operation succeeded.
         duration_ms: Operation duration in milliseconds.
         user_id: Optional user identifier.
+        tokens_input: Number of input tokens (LLM) - Week 4 Commit 26
+        tokens_output: Number of output tokens (LLM) - Week 4 Commit 26
+        cost_usd: Estimated cost in USD - Week 4 Commit 26
 
     Raises:
         Exception: If database insert fails.
@@ -59,9 +65,10 @@ def log_audit_record(
                 """
                 INSERT INTO audit_log (
                     ts, correlation_id, user_id, tool, action,
-                    input_hash, output_hash, success, duration_ms
+                    input_hash, output_hash, success, duration_ms,
+                    tokens_input, tokens_output, cost_usd
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -73,7 +80,10 @@ def log_audit_record(
                     input_hash,
                     output_hash,
                     success,
-                    duration_ms
+                    duration_ms,
+                    tokens_input,
+                    tokens_output,
+                    cost_usd
                 )
             )
             conn.commit()
@@ -108,11 +118,24 @@ def audit_context(
         def __init__(self):
             self.output_data = None
             self.success = False
+            self.tokens_input = 0
+            self.tokens_output = 0
+            self.cost_usd = 0.0
 
-        def set_output(self, data: Any):
-            """Set output data and mark operation as successful."""
+        def set_output(self, data: Any, tokens_input: int = 0, tokens_output: int = 0, cost_usd: float = 0.0):
+            """Set output data and mark operation as successful.
+
+            Args:
+                data: Output data to audit
+                tokens_input: Number of input tokens (LLM) - Week 4 Commit 26
+                tokens_output: Number of output tokens (LLM) - Week 4 Commit 26
+                cost_usd: Estimated cost in USD - Week 4 Commit 26
+            """
             self.output_data = data
             self.success = True
+            self.tokens_input = tokens_input
+            self.tokens_output = tokens_output
+            self.cost_usd = cost_usd
 
     ctx = AuditContext()
     start_time = time.perf_counter()
@@ -137,6 +160,9 @@ def audit_context(
                 output_data=ctx.output_data or {},
                 success=ctx.success,
                 duration_ms=duration_ms,
+                tokens_input=ctx.tokens_input,
+                tokens_output=ctx.tokens_output,
+                cost_usd=ctx.cost_usd,
                 user_id=user_id
             )
         except Exception as e:
