@@ -11,7 +11,7 @@ from .tools.vector import VectorTool
 from .tools.rest import RestTool
 from .tools.base import ToolResult
 from .llm.base import LLMProvider
-from .llm.providers import KilocodeProvider
+from .llm.providers import OpenRouterProvider, KilocodeProvider
 
 @dataclass
 class Routed:
@@ -26,16 +26,25 @@ class ToolRouter:
 
         Args:
             llm_provider: Optional LLM provider for natural language queries.
-                         If None, attempts to create KilocodeProvider from env vars.
-                         If KILOCODE_API_KEY is not set, SqlTool will only support raw SQL.
+                         If None, attempts to create provider from env vars:
+                         1. OpenRouterProvider (if OPENROUTER_API_KEY is set)
+                         2. KilocodeProvider (if KILOCODE_API_KEY is set)
+                         If no keys are set, SqlTool will only support raw SQL.
         """
-        # If no provider specified, try to create KilocodeProvider from environment
-        if llm_provider is None and os.getenv("KILOCODE_API_KEY"):
-            try:
-                llm_provider = KilocodeProvider()
-            except Exception:
-                # If Kilocode initialization fails, continue without LLM provider
-                llm_provider = None
+        # If no provider specified, try to auto-detect from environment
+        if llm_provider is None:
+            # Try OpenRouter first (recommended)
+            if os.getenv("OPENROUTER_API_KEY"):
+                try:
+                    llm_provider = OpenRouterProvider()
+                except Exception:
+                    llm_provider = None
+            # Fall back to Kilocode if available
+            elif os.getenv("KILOCODE_API_KEY"):
+                try:
+                    llm_provider = KilocodeProvider()
+                except Exception:
+                    llm_provider = None
 
         self.tools: Dict[ToolName, object] = {
             "sql": SqlTool(llm_provider=llm_provider),

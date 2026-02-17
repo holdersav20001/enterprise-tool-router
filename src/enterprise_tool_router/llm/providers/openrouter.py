@@ -1,9 +1,9 @@
-"""Kilocode LLM provider.
+"""OpenRouter LLM provider.
 
-This provider integrates with Kilocode's API for structured output generation.
-Kilocode uses an OpenRouter-compatible API endpoint with structured output support.
+This provider integrates with OpenRouter's API for structured output generation.
+OpenRouter provides access to 200+ AI models through a single API.
 
-Week 3 Commit 21: Kilocode Provider Integration
+Week 3 Commit 22: OpenRouter Provider Integration
 """
 import os
 import json
@@ -17,18 +17,18 @@ from ..base import LLMProvider, LLMUsage, LLMError, StructuredOutputError
 T = TypeVar('T', bound=BaseModel)
 
 
-class KilocodeProvider(LLMProvider):
-    """Kilocode API provider.
+class OpenRouterProvider(LLMProvider):
+    """OpenRouter API provider.
 
-    Requires KILOCODE_API_KEY environment variable or explicit API key.
+    Requires OPENROUTER_API_KEY environment variable or explicit API key.
 
-    The Kilocode API uses an OpenRouter-compatible endpoint and supports
-    structured output generation via JSON schema.
+    OpenRouter provides access to 200+ AI models including Claude, GPT-4,
+    Gemini, and many others through a unified API with structured output support.
 
     Example:
         >>> import os
-        >>> os.environ["KILOCODE_API_KEY"] = "eyJhbGci..."
-        >>> provider = KilocodeProvider()
+        >>> os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-..."
+        >>> provider = OpenRouterProvider(model="openrouter/aurora-alpha")
         >>> from pydantic import BaseModel
         >>> class Response(BaseModel):
         ...     answer: str
@@ -38,45 +38,45 @@ class KilocodeProvider(LLMProvider):
         ... )
     """
 
-    # Kilocode API endpoint (OpenRouter-compatible)
-    API_ENDPOINT = "https://kilocode.ai/api/openrouter/chat/completions"
+    # OpenRouter API endpoint
+    API_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
     def __init__(self, model: str | None = None, api_key: str | None = None):
-        """Initialize Kilocode provider.
+        """Initialize OpenRouter provider.
 
         Args:
-            model: Model to use (default: from KILOCODE_MODEL env var or google/gemini-2.5-flash-preview-05-20)
-            api_key: API key (default: from KILOCODE_API_KEY env var)
+            model: Model to use (default: from OPENROUTER_MODEL env var or openrouter/aurora-alpha)
+            api_key: API key (default: from OPENROUTER_API_KEY env var)
 
         Raises:
             LLMError: If API key is not provided
         """
-        self._api_key = api_key or os.getenv("KILOCODE_API_KEY")
+        self._api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self._api_key:
-            raise LLMError("KILOCODE_API_KEY environment variable not set or api_key not provided")
+            raise LLMError("OPENROUTER_API_KEY environment variable not set or api_key not provided")
 
         # Default model - can be overridden via environment variable
-        self._model = model or os.getenv("KILOCODE_MODEL", "google/gemini-2.5-flash-preview-05-20")
+        self._model = model or os.getenv("OPENROUTER_MODEL", "openrouter/aurora-alpha")
 
     def generate_structured(
         self,
         prompt: str,
         response_schema: Type[T]
     ) -> tuple[T, LLMUsage]:
-        """Generate structured output using Kilocode.
+        """Generate structured output using OpenRouter.
 
-        Uses Kilocode's OpenRouter-compatible API with JSON schema mode
-        to ensure valid JSON output matching the Pydantic schema.
+        Uses OpenRouter's API with JSON schema mode to ensure valid JSON
+        output matching the Pydantic schema.
 
         Args:
-            prompt: The prompt to send to Kilocode
+            prompt: The prompt to send to OpenRouter
             response_schema: Pydantic model for response validation
 
         Returns:
             Tuple of (validated_response, usage_stats)
 
         Raises:
-            StructuredOutputError: If Kilocode output doesn't match schema
+            StructuredOutputError: If OpenRouter output doesn't match schema
             LLMError: For API errors
         """
         try:
@@ -102,10 +102,12 @@ class KilocodeProvider(LLMProvider):
                 }
             }
 
-            # Make API request
+            # Make API request with proper OpenRouter authentication
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": self._api_key
+                "Authorization": f"Bearer {self._api_key}",
+                "HTTP-Referer": "https://github.com/holdersav20001/enterprise-tool-router",
+                "X-Title": "Enterprise Tool Router"
             }
 
             response = requests.post(
@@ -118,7 +120,7 @@ class KilocodeProvider(LLMProvider):
             # Check for HTTP errors
             if response.status_code != 200:
                 raise LLMError(
-                    f"Kilocode API returned status {response.status_code}: {response.text}"
+                    f"OpenRouter API returned status {response.status_code}: {response.text}"
                 )
 
             # Parse response
@@ -126,7 +128,7 @@ class KilocodeProvider(LLMProvider):
 
             # Extract content from response
             if not response_data.get("choices") or len(response_data["choices"]) == 0:
-                raise StructuredOutputError("Empty response from Kilocode")
+                raise StructuredOutputError("Empty response from OpenRouter")
 
             content = response_data["choices"][0]["message"]["content"]
 
@@ -135,7 +137,7 @@ class KilocodeProvider(LLMProvider):
                 response_json = json.loads(content)
                 validated = response_schema(**response_json)
             except json.JSONDecodeError as e:
-                raise StructuredOutputError(f"Invalid JSON from Kilocode: {e}")
+                raise StructuredOutputError(f"Invalid JSON from OpenRouter: {e}")
             except Exception as e:
                 raise StructuredOutputError(f"Schema validation failed: {e}")
 
@@ -147,9 +149,9 @@ class KilocodeProvider(LLMProvider):
         except StructuredOutputError:
             raise
         except requests.exceptions.RequestException as e:
-            raise LLMError(f"Kilocode API request failed: {e}")
+            raise LLMError(f"OpenRouter API request failed: {e}")
         except Exception as e:
-            raise LLMError(f"Kilocode API error: {e}")
+            raise LLMError(f"OpenRouter API error: {e}")
 
     def _calculate_usage(self, usage_obj: dict) -> LLMUsage:
         """Calculate token usage and estimated cost.
@@ -165,8 +167,8 @@ class KilocodeProvider(LLMProvider):
         total_tokens = usage_obj.get("total_tokens", input_tokens + output_tokens)
 
         # Extract cost from usage object if available
-        # OpenRouter returns cost in the usage object
-        estimated_cost = usage_obj.get("cost", 0.0)
+        # OpenRouter returns cost in USD in the usage object
+        estimated_cost = float(usage_obj.get("total_cost", 0.0))
 
         return LLMUsage(
             input_tokens=input_tokens,
@@ -177,5 +179,5 @@ class KilocodeProvider(LLMProvider):
 
     @property
     def model_name(self) -> str:
-        """Return the Kilocode model being used."""
+        """Return the OpenRouter model being used."""
         return self._model
