@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from .llm.base import LLMProvider, StructuredOutputError, LLMTimeoutError
 from .schemas_sql_planner import SqlPlanSchema, SqlPlanErrorSchema
 from .circuit_breaker import CircuitBreaker
+from .cache import CacheManager, NoOpCache
 
 
 # Database schema description for the LLM
@@ -90,7 +91,8 @@ class SqlPlanner:
     def __init__(
         self,
         llm_provider: LLMProvider,
-        circuit_breaker: Optional[CircuitBreaker] = None
+        circuit_breaker: Optional[CircuitBreaker] = None,
+        cache_manager: Optional[CacheManager] = None
     ):
         """Initialize SQL planner with an LLM provider.
 
@@ -98,6 +100,8 @@ class SqlPlanner:
             llm_provider: LLM provider to use for SQL generation
             circuit_breaker: Optional circuit breaker for fault tolerance (Week 4 Commit 22)
                             If None, creates default breaker (5 failures in 60s)
+            cache_manager: Optional cache manager for caching responses (Week 4 Commit 23)
+                          If None, creates default cache (5 min TTL, Redis if available)
         """
         self._llm = llm_provider
         # Week 4 Commit 22: Circuit breaker for fault tolerance
@@ -106,6 +110,8 @@ class SqlPlanner:
             timeout_seconds=60.0,
             recovery_timeout=30.0
         )
+        # Week 4 Commit 23: Caching for performance
+        self._cache = cache_manager if cache_manager is not None else CacheManager(ttl_seconds=300)
 
     def plan(
         self,
@@ -129,6 +135,17 @@ class SqlPlanner:
             ...     print(f"SQL: {result.sql}")
             ...     print(f"Confidence: {result.confidence}")
         """
+        # Week 4 Commit 23: Check cache first (avoids LLM call)
+        cached_response = self._cache.get(natural_language_query)
+        if cached_response is not None:
+            # Cache hit! Return cached SqlPlanSchema
+            # Reconstruct from dict
+            try:
+                return SqlPlanSchema(**cached_response)
+            except Exception:
+                # Cache corruption - proceed with LLM call
+                pass
+
         # Week 4 Commit 22: Check circuit breaker before calling LLM
         if not self._circuit_breaker.can_execute():
             stats = self._circuit_breaker.get_stats()
@@ -154,6 +171,10 @@ class SqlPlanner:
 
             # Week 4 Commit 22: Record success with circuit breaker
             self._circuit_breaker.record_success()
+
+            # Week 4 Commit 23: Cache successful response
+            # Only cache SqlPlanSchema (not errors!)
+            self._cache.set(natural_language_query, plan.model_dump())
 
             # plan is already validated by the LLM provider
             # and by SqlPlanSchema's field validators

@@ -8,6 +8,7 @@ opentelemetry-instrumentation-fastapi==0.51b0
 opentelemetry-instrumentation-requests==0.51b0
 psycopg==3.2.4
 requests==2.32.3
+redis==5.0.1  # Week 4 Commit 23: Redis caching layer
 
 # Week 3: LLM providers (optional - install only if using real providers)
 # For Kilocode: included above (uses requests)

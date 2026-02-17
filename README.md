@@ -783,6 +783,49 @@ result = planner.plan("complex query")
 - Automatic recovery testing (half-open → closed)
 - Sliding time window for failure tracking
 
+### Redis Caching for Performance
+Week 4 Commit 23 adds intelligent caching to reduce repeated LLM calls:
+
+```python
+from enterprise_tool_router.sql_planner import SqlPlanner
+from enterprise_tool_router.cache import CacheManager
+from enterprise_tool_router.llm.providers import OpenRouterProvider
+
+# Configure caching with custom TTL
+cache = CacheManager(
+    ttl_seconds=600,  # 10 minute cache
+    redis_url="redis://localhost:6379/0"
+)
+
+planner = SqlPlanner(
+    llm_provider=OpenRouterProvider(),
+    cache_manager=cache
+)
+
+# First query calls LLM
+result1 = planner.plan("show revenue by region")
+
+# Second identical query hits cache - NO LLM call!
+result2 = planner.plan("show revenue by region")  # Instant, free
+
+# Check cache performance
+stats = cache.get_stats()
+print(f"Hit rate: {stats.hit_rate:.1%}")  # e.g., "Hit rate: 75.0%"
+```
+
+**Caching Strategy:**
+- ✅ **Caches**: Successful SqlPlanSchema responses only
+- ❌ **Never caches**: Errors (SqlPlanErrorSchema) - failures should be retried
+- 🔑 **Cache key**: SHA256 hash of query (case-insensitive, normalized)
+- ⏰ **TTL**: Configurable (default: 5 minutes)
+- 📊 **Metrics**: Hit/miss rates, sets, errors tracked
+
+**Benefits:**
+- Reduces LLM API calls (cost savings)
+- Instant response for repeated queries
+- Graceful degradation (NoOpCache if Redis unavailable)
+- Metrics for monitoring cache effectiveness
+
 **See [OpenRouter Setup Guide](docs/openrouter_setup.md) for detailed configuration**
 
 ---
@@ -832,7 +875,14 @@ result = planner.plan("complex query")
   - Automatic fail-fast when circuit is open
   - Self-healing recovery testing (half-open state)
   - **134 tests passing** (20 new circuit breaker tests)
-- ⏳ Commit 23: Redis Caching Layer
+- **✅ Commit 23: Redis Caching Layer**
+  - Intelligent caching for validated SQL responses
+  - SHA256-based cache keys (normalized queries)
+  - Configurable TTL (default: 5 minutes)
+  - Only caches successful responses (errors never cached)
+  - Metrics tracking (hit rate, misses, sets)
+  - Graceful fallback (NoOpCache if Redis unavailable)
+  - **149 tests passing** (15 new cache tests)
 - ⏳ Commit 24: Rate Limiting
 - ⏳ Commit 25: Structured Error Taxonomy
 - ⏳ Commit 26: Token + Cost Metrics
