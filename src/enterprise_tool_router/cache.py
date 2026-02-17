@@ -94,19 +94,22 @@ class CacheManager:
 
     def __init__(
         self,
-        ttl_seconds: int = 300,
+        ttl_seconds: int = 1800,
         redis_url: Optional[str] = None,
-        enabled: bool = True
+        enabled: bool = True,
+        max_cache_size_bytes: int = 1_048_576
     ):
         """Initialize cache manager.
 
         Args:
-            ttl_seconds: Time-to-live for cache entries (default: 300 = 5 minutes)
+            ttl_seconds: Time-to-live for cache entries (default: 1800 = 30 minutes)
             redis_url: Redis connection URL (default: redis://localhost:6379/0)
             enabled: Whether to enable caching (default: True)
+            max_cache_size_bytes: Max size to cache in bytes (default: 1MB). Skip caching if larger.
         """
         self._ttl_seconds = ttl_seconds
         self._enabled = enabled and REDIS_AVAILABLE
+        self._max_size = max_cache_size_bytes
 
         # Stats tracking
         self._stats = CacheStats(hits=0, misses=0, sets=0, errors=0)
@@ -115,12 +118,12 @@ class CacheManager:
         self._redis: Optional[Any] = None
         if self._enabled:
             try:
-                redis_url = redis_url or "redis://localhost:6379/0"
+                redis_url = redis_url or "redis://127.0.0.1:6379/0"  # Use 127.0.0.1 for Windows/Docker compatibility
                 self._redis = redis.from_url(
                     redis_url,
                     decode_responses=True,
-                    socket_connect_timeout=1,  # 1 second timeout
-                    socket_timeout=1
+                    socket_connect_timeout=5,  # 5 second timeout for network latency
+                    socket_timeout=5
                 )
                 # Test connection
                 self._redis.ping()
@@ -158,24 +161,31 @@ class CacheManager:
             self._stats.errors += 1
             return None  # Graceful degradation on error
 
-    def set(self, query: str, response: dict) -> bool:
-        """Cache a successful response.
+    def set(self, query: str, response: dict, bypass: bool = False) -> bool:
+        """Cache a successful response with size checking.
 
         Args:
             query: The natural language query
             response: The response dict to cache (must be SqlPlanSchema, not error)
+            bypass: If True, skip caching even if enabled (Week 4 Commit 27)
 
         Returns:
             True if cached successfully, False otherwise
         """
-        if not self._enabled or not self._redis:
+        if not self._enabled or not self._redis or bypass:
             return False
 
         try:
-            cache_key = self._generate_key(query)
-            # Serialize to JSON
+            # Week 4 Commit 27: Check size before caching
             value = json.dumps(response)
+            size_bytes = len(value.encode('utf-8'))
 
+            if size_bytes > self._max_size:
+                # Too large - skip Redis caching
+                self._stats.sets += 1  # Count as attempt
+                return False
+
+            cache_key = self._generate_key(query)
             # Set with TTL
             self._redis.setex(cache_key, self._ttl_seconds, value)
             self._stats.sets += 1
@@ -243,6 +253,11 @@ class CacheManager:
     def ttl_seconds(self) -> int:
         """Get TTL in seconds."""
         return self._ttl_seconds
+
+    @property
+    def max_cache_size_bytes(self) -> int:
+        """Get maximum cacheable size in bytes."""
+        return self._max_size
 
     def _generate_key(self, query: str) -> str:
         """Generate cache key from query.

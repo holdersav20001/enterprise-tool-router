@@ -607,6 +607,22 @@ enterprise-tool-router/
 ## 🧑‍💻 Development
 
 ### Running Tests
+
+**Unit Tests** (fast, no external dependencies):
+```bash
+pytest -m "not integration" -v
+```
+
+**Integration Tests** (require Docker services - Redis & Postgres):
+```bash
+# Start services first
+docker-compose up -d
+
+# Run integration tests
+pytest -m integration -v
+```
+
+**All Tests:**
 ```bash
 # All tests
 pytest -v
@@ -617,6 +633,11 @@ pytest tests/test_sql_planner_integration.py -v
 # With coverage
 pytest --cov=enterprise_tool_router --cov-report=html
 ```
+
+**Test Markers:**
+- `@pytest.mark.unit` - Unit tests (mocked, fast)
+- `@pytest.mark.integration` - Integration tests (real Redis/Postgres)
+- `@pytest.mark.slow` - Slow tests (> 1 second)
 
 ### Evaluation Harness
 ```bash
@@ -793,7 +814,7 @@ from enterprise_tool_router.llm.providers import OpenRouterProvider
 
 # Configure caching with custom TTL
 cache = CacheManager(
-    ttl_seconds=600,  # 10 minute cache
+    ttl_seconds=1800,  # 30 minute cache (default)
     redis_url="redis://localhost:6379/0"
 )
 
@@ -813,18 +834,224 @@ stats = cache.get_stats()
 print(f"Hit rate: {stats.hit_rate:.1%}")  # e.g., "Hit rate: 75.0%"
 ```
 
+#### How Redis Caching Works
+
+**First Query (Cache Miss):**
+```python
+# User asks: "show revenue by region"
+planner.plan("show revenue by region")
+
+# 1. Generate cache key: SHA256("show revenue by region") → "sql:a3f5e9..."
+# 2. Check Redis: GET "sql:a3f5e9..." → None (cache miss)
+# 3. Call LLM (100-500ms): Generate SQL
+# 4. Store in Redis: SETEX "sql:a3f5e9..." 300 seconds
+#    → {sql: "SELECT region, SUM(revenue)...", confidence: 0.95}
+# 5. Execute SQL and return results
+```
+
+**Second Query (Cache Hit):**
+```python
+# Different user asks SAME question: "show revenue by region"
+planner.plan("show revenue by region")
+
+# 1. Generate cache key: SHA256("show revenue by region") → "sql:a3f5e9..."
+# 2. Check Redis: GET "sql:a3f5e9..." → Found! ✅
+#    → {sql: "SELECT region, SUM(revenue)...", confidence: 0.95}
+# 3. Skip LLM entirely (5-10ms) ⚡
+# 4. Execute cached SQL and return results
+```
+
+**Real-world example:** 50 employees ask "Q4 revenue" throughout the day
+- **Without cache:** 50 LLM calls × $0.002 = **$0.10**, 10 seconds total
+- **With cache (30-min TTL):** 1st call = $0.002, next 49 = **$0.00**, 250ms total
+- **Savings: 98% cost reduction, 40x faster**
+
+#### TTL (Time-To-Live) Auto-Expiration
+
+Redis automatically expires cached entries after the configured TTL (default: **30 minutes**):
+
+```python
+cache = CacheManager(ttl_seconds=1800)  # 30-minute expiration
+
+# 12:00 PM: Query "show revenue" → Cache miss, LLM call, store in Redis
+# 12:15 PM: Same query → Cache hit (still valid, 15 min remaining)
+# 12:35 PM: Same query → Cache miss (expired after 30 min), re-run LLM
+```
+
+**Why TTL matters:**
+- **Fresh data:** Ensures users get updated results for changing data
+- **Memory management:** Auto-cleanup prevents Redis from filling up
+- **Security:** Prevents stale SQL from being cached indefinitely
+
+**Configurable TTL:**
+```python
+cache = CacheManager(ttl_seconds=60)     # 1 minute (frequently changing data)
+cache = CacheManager(ttl_seconds=3600)   # 1 hour (stable analytics)
+cache = NoOpCache()                       # Disable caching (always call LLM)
+```
+
 **Caching Strategy:**
 - ✅ **Caches**: Successful SqlPlanSchema responses only
 - ❌ **Never caches**: Errors (SqlPlanErrorSchema) - failures should be retried
 - 🔑 **Cache key**: SHA256 hash of query (case-insensitive, normalized)
-- ⏰ **TTL**: Configurable (default: 5 minutes)
+- ⏰ **TTL**: Configurable (default: 30 minutes)
 - 📊 **Metrics**: Hit/miss rates, sets, errors tracked
 
+**Performance Impact:**
+- **Cache hit:** ~5-10ms (Redis read only)
+- **Cache miss:** ~100-500ms (LLM + Redis write)
+- **Speedup:** 10-50x for repeated queries
+- **Cost reduction:** 90%+ for common questions
+
+**Monitoring:**
+```python
+cache.get_stats()
+# → CacheStats(hits=45, misses=12, hit_rate=0.79)
+
+# Prometheus metrics also track token/cost savings from caching
+```
+
+**Graceful Fallback:**
+- If Redis unavailable → NoOpCache (calls LLM every time, no crash)
+- System remains operational, just slower and more expensive
+
+### Permanent Query Storage (30-Day Retention)
+Week 4 Commit 27 adds persistent storage of successful queries beyond Redis TTL:
+
+```python
+from enterprise_tool_router.query_storage import lookup_query, cleanup_expired_queries
+
+# Retrieve a previously successful query (stored for 30 days)
+stored = lookup_query("show revenue by region")
+if stored:
+    print(f"SQL: {stored['generated_sql']}")
+    print(f"Used {stored['use_count']} times")
+    print(f"Last used: {stored['last_used_at']}")
+    print(f"Avg execution time: {stored['execution_time_ms']}ms")
+    print(f"Cost: ${stored['cost_usd']}")
+
+# Periodic cleanup (e.g., daily cron job)
+deleted_count = cleanup_expired_queries()
+print(f"Cleaned up {deleted_count} expired queries")
+```
+
+**Three-Tier Caching Architecture:**
+```
+┌────────────────────────────────────────────────────────┐
+│ Request: "show revenue by region"                     │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│  1️⃣ Redis Cache (30 min) ──→ Hit? Return instantly   │
+│     ↓ Miss                                             │
+│  2️⃣ Query History (30 days) ──→ Hit? Reuse SQL       │
+│     ↓ Miss                                             │
+│  3️⃣ LLM Generation ──→ Generate fresh SQL             │
+│                                                        │
+│  💾 Store: Redis (30 min) + Database (30 days)       │
+└────────────────────────────────────────────────────────┘
+```
+
 **Benefits:**
-- Reduces LLM API calls (cost savings)
-- Instant response for repeated queries
-- Graceful degradation (NoOpCache if Redis unavailable)
-- Metrics for monitoring cache effectiveness
+- **Query Library**: Build institutional knowledge of successful queries
+- **Cost Tracking**: Monitor expensive queries over time with token usage and cost data
+- **Audit Trail**: Full history of generated SQL with correlation IDs
+- **Reuse**: Automatic reuse of successful queries (zero LLM cost beyond Redis TTL)
+- **Analytics**: Track query patterns, use counts, and execution times
+
+**Configuration:**
+```python
+from enterprise_tool_router.config import Settings
+
+settings = Settings(
+    query_retention_days=30,     # Days to keep query history
+    cache_ttl_seconds=1800,      # Redis TTL (30 minutes)
+    cache_size_limit_mb=1         # Max size to cache in Redis
+)
+```
+
+### Cache Bypass for Fresh Results
+Week 4 Commit 27 adds ability to force fresh generation even when cached:
+
+```python
+# Normal query (uses cache if available)
+result = router.handle("show sales")
+
+# Force fresh results (bypass both Redis and query_history)
+result = router.handle("show sales", bypass_cache=True)
+```
+
+**API Usage:**
+```bash
+# Normal query (uses cache)
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "show sales"}'
+
+# Bypass cache (force fresh data)
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "show sales", "bypass_cache": true}'
+```
+
+**Use Cases:**
+- **Real-time dashboards** that need latest data
+- **After database updates** to force fresh SQL generation
+- **Debugging** cache issues or testing new prompts
+- **Testing** different LLM responses for the same query
+
+**Note:** Bypassed queries still get stored in query_history but skip Redis caching
+
+### Smart Caching by Size
+Week 4 Commit 27 prevents large results from overwhelming Redis memory:
+
+```python
+from enterprise_tool_router.cache import CacheManager
+
+# Configure size limit (default: 1MB)
+cache = CacheManager(
+    ttl_seconds=1800,            # 30 minutes
+    max_cache_size_bytes=1_048_576  # 1MB limit
+)
+
+# Small results cached in Redis
+small_query = "SELECT region, SUM(revenue) FROM sales_fact GROUP BY region LIMIT 100"
+# → Cached ✅ (< 1MB)
+
+# Large results skip Redis but still stored in query_history
+large_query = "SELECT * FROM sales_fact"  # 500K rows
+# → NOT cached in Redis ❌ (> 1MB)
+# → BUT still stored in query_history ✅ (permanent storage)
+```
+
+**Size-Based Strategy:**
+```
+┌─────────────────────────────────────────────────────┐
+│ Result Size Check                                   │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  Result < 1MB  → Cache in Redis (fast retrieval)  │
+│  Result ≥ 1MB  → Skip Redis (prevent memory pressure)│
+│                                                     │
+│  All results → Store in query_history (permanent)  │
+└─────────────────────────────────────────────────────┘
+```
+
+**Benefits:**
+- **Memory Protection**: Large queries don't evict useful small queries from Redis
+- **Stable Performance**: Redis stays within 256MB limit
+- **Smart Filtering**: Automatically adapts to query result sizes
+- **Still Logged**: All queries stored in database regardless of size
+
+**Real-World Example:**
+```python
+# Dashboard queries (small, frequently accessed) → Cached in Redis
+"SELECT region, SUM(revenue) FROM sales_fact WHERE year = 2024 GROUP BY region LIMIT 50"
+# → 5KB result → Cached ✅
+
+# Data export queries (large, infrequent) → Skip Redis cache
+"SELECT * FROM sales_fact WHERE year = 2024"  # 100K rows
+# → 50MB result → NOT cached (too large) but stored in query_history
+```
 
 ### Structured Error Taxonomy
 Week 4 Commit 25 adds a comprehensive error classification system with predictable JSON schemas:

@@ -118,7 +118,8 @@ class SqlPlanner:
     def plan(
         self,
         natural_language_query: str,
-        timeout: float = 30.0
+        timeout: float = 30.0,
+        bypass_cache: bool = False
     ) -> SqlPlanSchema | SqlPlanErrorSchema:
         """Generate SQL from a natural language query.
 
@@ -126,6 +127,8 @@ class SqlPlanner:
             natural_language_query: User's query in natural language
             timeout: Maximum time to wait for LLM response in seconds (default: 30.0)
                      Week 4 Commit 21: Timeout protection
+            bypass_cache: If True, skip cache and query_history lookup (default: False)
+                          Week 4 Commit 27: Force fresh generation
 
         Returns:
             SqlPlanSchema with generated SQL, confidence, and explanation
@@ -137,18 +140,32 @@ class SqlPlanner:
             ...     print(f"SQL: {result.sql}")
             ...     print(f"Confidence: {result.confidence}")
         """
-        # Week 4 Commit 23: Check cache first (avoids LLM call)
-        cached_response = self._cache.get(natural_language_query)
-        if cached_response is not None:
-            # Cache hit! Return cached SqlPlanSchema
-            # Week 4 Commit 26: Cache hits have zero token usage
-            self._last_usage = None
-            # Reconstruct from dict
-            try:
-                return SqlPlanSchema(**cached_response)
-            except Exception:
-                # Cache corruption - proceed with LLM call
-                pass
+        # Week 4 Commit 27: Check Redis cache (unless bypassed)
+        if not bypass_cache:
+            cached_response = self._cache.get(natural_language_query)
+            if cached_response is not None:
+                # Cache hit! Return cached SqlPlanSchema
+                # Week 4 Commit 26: Cache hits have zero token usage
+                self._last_usage = None
+                # Reconstruct from dict
+                try:
+                    return SqlPlanSchema(**cached_response)
+                except Exception:
+                    # Cache corruption - proceed with LLM call
+                    pass
+
+        # Week 4 Commit 27: Check query_history (warm cache)
+        if not bypass_cache:
+            from .query_storage import lookup_query
+            stored_query = lookup_query(natural_language_query)
+            if stored_query is not None:
+                # Found in history! Reuse the SQL
+                self._last_usage = None  # Historical queries have zero cost
+                return SqlPlanSchema(
+                    sql=stored_query["generated_sql"],
+                    confidence=stored_query["confidence"],
+                    explanation=f"Reused from query history (last used: {stored_query['last_used_at']})"
+                )
 
         # Week 4 Commit 22: Check circuit breaker before calling LLM
         if not self._circuit_breaker.can_execute():
@@ -176,9 +193,9 @@ class SqlPlanner:
             # Week 4 Commit 22: Record success with circuit breaker
             self._circuit_breaker.record_success()
 
-            # Week 4 Commit 23: Cache successful response
+            # Week 4 Commit 27: Cache successful response (unless bypassed or too large)
             # Only cache SqlPlanSchema (not errors!)
-            self._cache.set(natural_language_query, plan.model_dump())
+            self._cache.set(natural_language_query, plan.model_dump(), bypass=bypass_cache)
 
             # Week 4 Commit 26: Track token usage for cost metrics
             self._last_usage = usage

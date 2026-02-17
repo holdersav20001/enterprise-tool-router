@@ -43,7 +43,8 @@ def query(req: QueryRequest, request: Request):
         user_id=user_id
     ) as audit_ctx:
         # Route and execute the query with correlation ID propagation
-        routed = router.handle(req.query, correlation_id=correlation_id, user_id=user_id)
+        # Week 4 Commit 27: Pass bypass_cache flag
+        routed = router.handle(req.query, correlation_id=correlation_id, user_id=user_id, bypass_cache=req.bypass_cache)
         REQS.labels(tool=routed.tool).inc()
         LAT.observe(routed.elapsed_ms)
         # Week 4 Commit 26: Track token usage and cost

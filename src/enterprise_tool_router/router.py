@@ -83,7 +83,8 @@ class ToolRouter:
         self,
         query: str,
         correlation_id: str | None = None,
-        user_id: str | None = None
+        user_id: str | None = None,
+        bypass_cache: bool = False
     ) -> Routed:
         """Route and execute a query with the appropriate tool.
 
@@ -91,6 +92,7 @@ class ToolRouter:
             query: The user query to route and execute
             correlation_id: Optional correlation ID for tracing. Auto-generates UUID if not provided.
             user_id: Optional user/IP identifier for rate limiting (Week 4 Commit 24)
+            bypass_cache: If True, skip cache and query_history lookup (Week 4 Commit 27)
 
         Returns:
             Routed object with tool name, confidence, result, and elapsed time
@@ -122,7 +124,8 @@ class ToolRouter:
         if tool_name == "unknown":
             res = ToolResult(data={"message": "No confident tool match", "query": query}, notes="unknown")
         else:
-            res = self.tools[tool_name].run(query, correlation_id=correlation_id)  # type: ignore[index]
+            # Week 4 Commit 27: Pass bypass_cache to tool
+            res = self.tools[tool_name].run(query, correlation_id=correlation_id, bypass_cache=bypass_cache)  # type: ignore[index]
         elapsed = (time.perf_counter() - start) * 1000
         # Week 4 Commit 26: Propagate token usage and cost from tool result
         return Routed(

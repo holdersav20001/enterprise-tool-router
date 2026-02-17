@@ -6,6 +6,7 @@ ToolName = Literal["sql", "vector", "rest", "unknown"]
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=4000)
     user_id: Optional[str] = None
+    bypass_cache: bool = False  # Week 4 Commit 27: Force fresh results
 
 class QueryResponse(BaseModel):
     tool_used: ToolName

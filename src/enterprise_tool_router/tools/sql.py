@@ -71,7 +71,7 @@ class SqlTool:
         self._confidence_threshold = confidence_threshold
         self._llm_timeout = llm_timeout
 
-    def run(self, query: str, correlation_id: str | None = None) -> ToolResult:
+    def run(self, query: str, correlation_id: str | None = None, bypass_cache: bool = False) -> ToolResult:
         """Execute a safe SQL query against Postgres.
 
         Week 3 Update: Supports both raw SQL and natural language queries.
@@ -90,6 +90,7 @@ class SqlTool:
         Args:
             query: SQL query or natural language question
             correlation_id: Optional correlation ID for tracing. Auto-generates UUID if not provided.
+            bypass_cache: If True, skip cache and query_history lookup (Week 4 Commit 27)
 
         Returns:
             ToolResult with SqlResultSchema on success or SqlErrorSchema on failure.
@@ -113,7 +114,8 @@ class SqlTool:
 
                 # Generate SQL from natural language
                 # Week 4 Commit 21: Pass timeout to prevent hanging
-                plan = self._planner.plan(query, timeout=self._llm_timeout)
+                # Week 4 Commit 27: Pass bypass_cache flag
+                plan = self._planner.plan(query, timeout=self._llm_timeout, bypass_cache=bypass_cache)
 
                 # Week 4 Commit 26: Capture token usage from planner
                 if self._planner.last_usage:
@@ -165,7 +167,33 @@ class SqlTool:
                     )
 
             # Execute the validated query (from either path)
+            import time
+            start_time = time.time()
             result_schema = self._execute(safe_query)
+            elapsed = time.time() - start_time
+
+            # Week 4 Commit 27: Store successful query in history
+            if self._planner and isinstance(result_schema, SqlResultSchema) and not self._is_raw_sql(query):
+                from .query_storage import store_query
+                import json
+
+                # Calculate result size
+                result_json = json.dumps(result_schema.model_dump())
+                result_size_bytes = len(result_json.encode('utf-8'))
+
+                # Store in query_history table
+                store_query(
+                    natural_language_query=query,
+                    generated_sql=safe_query,
+                    confidence=plan.confidence if 'plan' in locals() and hasattr(plan, 'confidence') else 1.0,
+                    result_size_bytes=result_size_bytes,
+                    row_count=result_schema.row_count,
+                    execution_time_ms=int(elapsed * 1000),
+                    tokens_input=tokens_input,
+                    tokens_output=tokens_output,
+                    cost_usd=cost_usd,
+                    correlation_id=correlation_id
+                )
 
             # Return with validated Pydantic schema (converted to dict for ToolResult)
             # Week 4 Commit 26: Include token usage and cost
